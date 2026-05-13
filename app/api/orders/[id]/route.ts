@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin, createServerSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase";
 import { createQRPaymentLink, chargeManualCard, createTapToPayIntent } from "@/lib/stripe";
 import { sendOrderConfirmation, sendOrderRejected } from "@/lib/twilio";
 
