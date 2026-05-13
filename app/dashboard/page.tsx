@@ -1,53 +1,19 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-const DEMO_RESTAURANT = {
-  id: "demo-restaurant-id",
-  name: "Bella Vista Kitchen",
-  slug: "bella-vista",
-  phone: "(703) 555-0192",
-  address: "123 Main St, Arlington, VA",
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const STATUS: Record<string, { label: string; color: string; pulse: boolean }> = {
   pending:   { label: "New Order",  color: "#FF6B35", pulse: true  },
   accepted:  { label: "Accepted",   color: "#00C896", pulse: false },
+  preparing: { label: "Preparing",  color: "#F59E0B", pulse: false },
   completed: { label: "Done",       color: "#6B7280", pulse: false },
   rejected:  { label: "Rejected",   color: "#EF4444", pulse: false },
 };
-
-const DEMO_ORDERS = [
-  {
-    id: "1", order_number: "ORD-ABC123",
-    customer_name: "Sarah Johnson", customer_phone: "+1 (703) 555-0123",
-    customer_email: "sarah@email.com",
-    items: [{ id: "1", name: "Margherita Pizza", qty: 1, price: 16.99 }, { id: "2", name: "Tiramisu", qty: 2, price: 7.99 }],
-    notes: "No onions please",
-    subtotal: 32.97, tax: 2.88, tip: 0, platform_fee: 4.95, restaurant_payout: 28.02, total: 37.92,
-    payment_method: "sms_link", payment_status: "awaiting_payment",
-    status: "pending", source: "voice_ai", created_at: new Date(Date.now() - 3 * 60000).toISOString(),
-  },
-  {
-    id: "2", order_number: "ORD-DEF456",
-    customer_name: "James Williams", customer_phone: "+1 (571) 555-0987",
-    customer_email: "james@email.com",
-    items: [{ id: "3", name: "Pasta Carbonara", qty: 1, price: 18.99 }, { id: "4", name: "House Wine", qty: 2, price: 9.99 }],
-    notes: "",
-    subtotal: 38.97, tax: 3.41, tip: 0, platform_fee: 5.85, restaurant_payout: 33.12, total: 44.82,
-    payment_method: "in_person", payment_status: "pending",
-    status: "accepted", source: "voice_ai", created_at: new Date(Date.now() - 15 * 60000).toISOString(),
-  },
-  {
-    id: "3", order_number: "ORD-GHI789",
-    customer_name: "Maya Patel", customer_phone: "+1 (202) 555-0456",
-    customer_email: "maya@email.com",
-    items: [{ id: "5", name: "Bruschetta", qty: 2, price: 8.99 }, { id: "6", name: "Chicken Parmigiana", qty: 1, price: 19.99 }],
-    notes: "Extra sauce",
-    subtotal: 37.97, tax: 3.32, tip: 0, platform_fee: 5.70, restaurant_payout: 32.27, total: 43.67,
-    payment_method: "sms_link", payment_status: "paid",
-    status: "completed", source: "voice_ai", created_at: new Date(Date.now() - 45 * 60000).toISOString(),
-  },
-];
 
 function timeAgo(iso: string) {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -64,8 +30,25 @@ const S = {
 
 function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, status: string) => void }) {
   const [expanded, setExpanded] = useState(order.status === "pending");
+  const [loading, setLoading] = useState<string | null>(null);
   const cfg = STATUS[order.status] || STATUS.pending;
   const isNew = order.status === "pending";
+
+  const doAction = async (action: string) => {
+    setLoading(action);
+    try {
+      const r = await fetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await r.json();
+      if (data.success || data.status) {
+        onUpdate(order.id, action === "accept" ? "accepted" : action === "complete" ? "completed" : "rejected");
+      }
+    } catch (e) { console.error(e); }
+    setLoading(null);
+  };
 
   return (
     <div style={{ ...S.card, border: isNew ? "1px solid rgba(255,107,53,0.35)" : "1px solid rgba(255,255,255,0.07)", background: isNew ? "rgba(255,107,53,0.04)" : "rgba(255,255,255,0.02)", marginBottom: 12 }}>
@@ -74,21 +57,20 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
           <div style={{ width: 46, height: 46, borderRadius: 13, background: isNew ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: isNew ? "1px solid rgba(255,107,53,0.3)" : "1px solid rgba(255,255,255,0.07)" }}>📞</div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <span style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 15 }}>{order.customer_name}</span>
+              <span style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 15 }}>{order.customer_name || "Voice Customer"}</span>
               <span style={S.badge(cfg.color)}>
-                {cfg.pulse && <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color, display: "inline-block" }} />}
+                {cfg.pulse && <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color, display: "inline-block", animation: "pulse 1.5s infinite" }} />}
                 {cfg.label}
               </span>
               {order.payment_status === "paid" && <span style={S.badge("#00C896")}>✓ Paid</span>}
-              {order.payment_status === "awaiting_payment" && <span style={S.badge("#F59E0B")}>⏳ Awaiting Payment</span>}
             </div>
-            <div style={{ color: "#6B7280", fontSize: 12 }}>{order.order_number} · {order.items.length} items · {timeAgo(order.created_at)}</div>
+            <div style={{ color: "#6B7280", fontSize: 12 }}>{order.order_number} · {Array.isArray(order.items) ? order.items.length : 0} items · {timeAgo(order.created_at)}</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 20 }}>${order.total.toFixed(2)}</div>
-            <div style={{ color: "#00C896", fontSize: 12 }}>Your share: ${order.restaurant_payout.toFixed(2)}</div>
+            <div style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 20 }}>${(order.total || 0).toFixed(2)}</div>
+            <div style={{ color: "#00C896", fontSize: 12 }}>Your share: ${(order.restaurant_payout || 0).toFixed(2)}</div>
           </div>
           <span style={{ color: "#4B5563", fontSize: 18, display: "inline-block", transform: expanded ? "rotate(180deg)" : "none", transition: "0.3s" }}>▾</span>
         </div>
@@ -99,21 +81,21 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 20 }}>
             <div>
               <div style={{ color: "#6B7280", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>Customer</div>
-              {[["📞", order.customer_phone], ["✉️", order.customer_email], ["🕐", new Date(order.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })], ["🤖", "Voice AI Order"], ["💳", (order.payment_method || "—").replace(/_/g, " ")]].map(([icon, val]) => (
+              {[["📞", order.customer_phone || "—"], ["🕐", new Date(order.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })], ["🤖", "Voice AI Order"], ["💳", (order.payment_method || "—").replace(/_/g, " ")]].map(([icon, val]) => (
                 <div key={String(val)} style={{ display: "flex", gap: 10, marginBottom: 6, color: "#D1D5DB", fontSize: 13 }}><span>{icon}</span><span>{val}</span></div>
               ))}
             </div>
             <div>
               <div style={{ color: "#6B7280", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>Items Ordered</div>
-              {order.items.map((item: any, i: number) => (
+              {Array.isArray(order.items) && order.items.map((item: any, i: number) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <span style={{ color: "#D1D5DB", fontSize: 13 }}><span style={{ color: "#FF6B35", fontWeight: 700 }}>{item.qty}×</span> {item.name}</span>
-                  <span style={{ color: "#F9FAFB", fontWeight: 600, fontSize: 13 }}>${(item.price * item.qty).toFixed(2)}</span>
+                  <span style={{ color: "#F9FAFB", fontWeight: 600, fontSize: 13 }}>${((item.price || 0) * (item.qty || 1)).toFixed(2)}</span>
                 </div>
               ))}
               {order.notes && (
                 <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 8 }}>
-                  <div style={{ color: "#F59E0B", fontSize: 11, fontWeight: 700, marginBottom: 4 }}>📝 NOTES</div>
+                  <div style={{ color: "#F59E0B", fontSize: 11, fontWeight: 700, marginBottom: 4 }}>📝 NOTES / TRANSCRIPT</div>
                   <div style={{ color: "#D1D5DB", fontSize: 12 }}>{order.notes}</div>
                 </div>
               )}
@@ -121,21 +103,25 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
           </div>
 
           <div style={{ padding: "14px 18px", background: "rgba(0,0,0,0.2)", borderRadius: 12, marginBottom: 20, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-            {[["Subtotal", `$${order.subtotal.toFixed(2)}`, "#F9FAFB"], ["Tax", `$${order.tax.toFixed(2)}`, "#9CA3AF"], ["VoceEats (15%)", `-$${order.platform_fee.toFixed(2)}`, "#FF6B35"], ["Your Payout", `$${order.restaurant_payout.toFixed(2)}`, "#00C896"]].map(([label, val, color]: any) => (
+            {[["Subtotal", `$${(order.subtotal || 0).toFixed(2)}`, "#F9FAFB"], ["Tax", `$${(order.tax || 0).toFixed(2)}`, "#9CA3AF"], ["VoceEats (15%)", `-$${(order.platform_fee || 0).toFixed(2)}`, "#FF6B35"], ["Your Payout", `$${(order.restaurant_payout || 0).toFixed(2)}`, "#00C896"]].map(([label, val, color]: any) => (
               <div key={label}><div style={{ color: "#6B7280", fontSize: 11 }}>{label}</div><div style={{ color, fontWeight: 700, fontSize: 15 }}>{val}</div></div>
             ))}
-            <div><div style={{ color: "#6B7280", fontSize: 11 }}>Total Charged</div><div style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 20 }}>${order.total.toFixed(2)}</div></div>
+            <div><div style={{ color: "#6B7280", fontSize: 11 }}>Total</div><div style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 20 }}>${(order.total || 0).toFixed(2)}</div></div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {order.status === "pending" && (
               <>
-                <button onClick={() => onUpdate(order.id, "accepted")} style={{ ...S.btn("#00C896"), flex: 1, fontSize: 14, padding: "13px" }}>✅ Accept Order</button>
-                <button onClick={() => onUpdate(order.id, "rejected")} style={{ ...S.btn("#EF4444", true), fontSize: 14, padding: "13px 20px" }}>✗ Reject</button>
+                <button onClick={() => doAction("accept")} disabled={loading === "accept"} style={{ ...S.btn("#00C896"), flex: 1, fontSize: 14, padding: "13px" }}>
+                  {loading === "accept" ? "..." : "✅ Accept Order"}
+                </button>
+                <button onClick={() => doAction("reject")} style={{ ...S.btn("#EF4444", true), fontSize: 14, padding: "13px 20px" }}>✗ Reject</button>
               </>
             )}
             {order.status === "accepted" && (
-              <button onClick={() => onUpdate(order.id, "completed")} style={{ ...S.btn("#F59E0B"), flex: 1, fontSize: 14, padding: "13px" }}>🍽️ Mark Completed</button>
+              <button onClick={() => doAction("complete")} disabled={loading === "complete"} style={{ ...S.btn("#F59E0B"), flex: 1, fontSize: 14, padding: "13px" }}>
+                {loading === "complete" ? "..." : "🍽️ Mark Completed"}
+              </button>
             )}
             <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13, padding: "13px 18px" }}>💳 Collect Payment</button>
             <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13, padding: "13px 18px" }}>🖨️ Print</button>
@@ -147,30 +133,87 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
 }
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<"orders" | "menu" | "printers" | "analytics">("orders");
+  const [tab, setTab] = useState<"orders" | "menu" | "analytics">("orders");
   const [filter, setFilter] = useState("all");
-  const [orders, setOrders] = useState(DEMO_ORDERS);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(true);
+  const audioCtx = useRef<AudioContext | null>(null);
+
+  const playAlert = useCallback(() => {
+    try {
+      if (!audioCtx.current) audioCtx.current = new AudioContext();
+      const ctx = audioCtx.current;
+      const beep = (freq: number, start: number, dur: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur);
+      };
+      beep(880, 0, 0.15); beep(1100, 0.2, 0.15); beep(1320, 0.4, 0.25);
+    } catch {}
+  }, []);
+
+  // Load orders from Supabase
+  useEffect(() => {
+    const loadOrders = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (data) setOrders(data);
+      if (error) console.error("Load orders error:", error);
+      setLoading(false);
+    };
+    loadOrders();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel("orders-realtime")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "orders",
+      }, (payload) => {
+        setOrders(prev => [payload.new as any, ...prev]);
+        playAlert();
+      })
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "orders",
+      }, (payload) => {
+        setOrders(prev => prev.map(o => o.id === payload.new.id ? payload.new : o));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [playAlert]);
 
   const updateOrder = (id: string, status: string) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
   };
 
   const pending = orders.filter(o => o.status === "pending").length;
-  const todayRevenue = orders.filter(o => !["rejected","cancelled"].includes(o.status)).reduce((s, o) => s + o.restaurant_payout, 0);
+  const todayRevenue = orders.filter(o => !["rejected","cancelled"].includes(o.status)).reduce((s, o) => s + (o.restaurant_payout || 0), 0);
   const filtered = filter === "all" ? orders : orders.filter(o => o.status === filter);
 
   const tabs = [
     { id: "orders", label: "Orders", icon: "📋", count: pending },
     { id: "menu", label: "Menu", icon: "🍽️" },
-    { id: "printers", label: "Printers", icon: "🖨️" },
     { id: "analytics", label: "Analytics", icon: "📊" },
   ];
 
   const statCards = [
     { icon: "🔔", label: "Pending", value: pending, color: "#FF6B35", sub: pending > 0 ? "Action needed" : "All clear" },
     { icon: "💰", label: "Today's Payout", value: `$${todayRevenue.toFixed(0)}`, color: "#00C896", sub: "Your 85%" },
-    { icon: "🛍️", label: "Total Orders", value: orders.length, color: "#6366F1", sub: "Today" },
+    { icon: "🛍️", label: "Total Orders", value: orders.length, color: "#6366F1", sub: "All time" },
     { icon: "📞", label: "Voice Orders", value: orders.filter(o => o.source === "voice_ai").length, color: "#F59E0B", sub: "Via AI" },
   ];
 
@@ -178,7 +221,6 @@ export default function Dashboard() {
     <div style={{ minHeight: "100vh", background: "#0A0A0F", fontFamily: "'Segoe UI', sans-serif", color: "#F9FAFB" }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-        @keyframes slideIn { from{opacity:0;transform:translateY(-16px)} to{opacity:1;transform:translateY(0)} }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
         input,select{background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:#F9FAFB;border-radius:10px;padding:10px 14px;outline:none;font-family:inherit}
@@ -193,10 +235,10 @@ export default function Dashboard() {
           </div>
           <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{DEMO_RESTAURANT.name}</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Restaurant Dashboard</div>
             <div style={{ color: "#6B7280", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#00C896", display: "inline-block", animation: "pulse 2s infinite" }} />
-              POS Dashboard · Powered by Diginetplore
+              Live · Powered by Diginetplore
             </div>
           </div>
         </div>
@@ -204,7 +246,7 @@ export default function Dashboard() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", background: "rgba(255,255,255,0.04)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)" }}>
             <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>RESTAURANT</span>
             <div onClick={() => setIsOpen(!isOpen)} style={{ width: 44, height: 24, borderRadius: 12, cursor: "pointer", background: isOpen ? "#00C896" : "#374151", position: "relative", transition: "background 0.3s" }}>
-              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: isOpen ? 23 : 3, transition: "left 0.3s", boxShadow: "0 2px 4px rgba(0,0,0,0.3)" }} />
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: isOpen ? 23 : 3, transition: "left 0.3s" }} />
             </div>
             <span style={{ fontSize: 12, color: isOpen ? "#00C896" : "#EF4444", fontWeight: 700 }}>{isOpen ? "OPEN" : "CLOSED"}</span>
           </div>
@@ -244,7 +286,23 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
-            {filtered.map(order => <OrderCard key={order.id} order={order} onUpdate={updateOrder} />)}
+
+            {loading ? (
+              <div style={{ textAlign: "center", padding: "80px 0", color: "#4B5563" }}>
+                <div style={{ fontSize: 40, marginBottom: 16, animation: "pulse 1s infinite" }}>⏳</div>
+                <div>Loading orders...</div>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "80px 0", color: "#4B5563" }}>
+                <div style={{ fontSize: 56, marginBottom: 20 }}>📞</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No orders yet</div>
+                <div style={{ fontSize: 14 }}>Call (703) 686-5337 to place a voice order!</div>
+              </div>
+            ) : (
+              filtered.map(order => (
+                <OrderCard key={order.id} order={order} onUpdate={updateOrder} />
+              ))
+            )}
           </div>
         )}
 
@@ -252,23 +310,15 @@ export default function Dashboard() {
           <div style={{ ...S.card, padding: 60, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
             <div style={{ color: "#F9FAFB", fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Menu Management</div>
-            <div style={{ color: "#6B7280", fontSize: 14 }}>Upload your menu photo and AI will extract everything automatically</div>
-          </div>
-        )}
-
-        {tab === "printers" && (
-          <div style={{ ...S.card, padding: 60, textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🖨️</div>
-            <div style={{ color: "#F9FAFB", fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Printer Setup</div>
-            <div style={{ color: "#6B7280", fontSize: 14 }}>Configure your receipt printers here</div>
+            <div style={{ color: "#6B7280", fontSize: 14 }}>Upload your menu photo and AI extracts everything automatically</div>
           </div>
         )}
 
         {tab === "analytics" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {[
-              { title: "💰 Revenue", rows: [["Gross Revenue", `$${orders.reduce((s,o)=>s+o.total,0).toFixed(2)}`, "#F9FAFB"], ["Your Earnings (85%)", `$${orders.reduce((s,o)=>s+o.restaurant_payout,0).toFixed(2)}`, "#00C896"], ["VoceEats Fee (15%)", `$${orders.reduce((s,o)=>s+o.platform_fee,0).toFixed(2)}`, "#FF6B35"]] },
-              { title: "📊 Orders", rows: [["Total", orders.length, "#F9FAFB"], ["Completed", orders.filter(o=>o.status==="completed").length, "#00C896"], ["Pending", orders.filter(o=>o.status==="pending").length, "#FF6B35"], ["Rejected", orders.filter(o=>o.status==="rejected").length, "#EF4444"]] },
+              { title: "💰 Revenue", rows: [["Gross Revenue", `$${orders.reduce((s,o)=>s+(o.total||0),0).toFixed(2)}`, "#F9FAFB"], ["Your Earnings (85%)", `$${orders.reduce((s,o)=>s+(o.restaurant_payout||0),0).toFixed(2)}`, "#00C896"], ["VoceEats Fee (15%)", `$${orders.reduce((s,o)=>s+(o.platform_fee||0),0).toFixed(2)}`, "#FF6B35"]] },
+              { title: "📊 Orders", rows: [["Total", orders.length, "#F9FAFB"], ["Completed", orders.filter(o=>o.status==="completed").length, "#00C896"], ["Pending", orders.filter(o=>o.status==="pending").length, "#FF6B35"], ["Voice AI", orders.filter(o=>o.source==="voice_ai").length, "#6366F1"]] },
             ].map(section => (
               <div key={section.title} style={{ ...S.card, padding: 28 }}>
                 <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 20 }}>{section.title}</h3>
