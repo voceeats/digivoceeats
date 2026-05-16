@@ -4,45 +4,94 @@ import { supabaseAdmin } from "@/lib/supabase";
 const DEMO_RESTAURANT_ID = "339ad678-297a-4d57-9f4b-a502650829d3";
 
 const MENU_ITEMS: Record<string, number> = {
-  "bruschetta": 8.99,
-  "calamari": 12.99,
-  "margherita pizza": 16.99,
-  "margherita": 16.99,
-  "pasta carbonara": 18.99,
-  "carbonara": 18.99,
-  "pasta": 18.99,
-  "chicken parmigiana": 19.99,
-  "chicken": 19.99,
-  "parmigiana": 19.99,
-  "tiramisu": 7.99,
-  "panna cotta": 6.99,
-  "house wine": 9.99,
-  "wine": 9.99,
-  "sparkling water": 3.99,
-  "water": 3.99,
-  "soft drink": 2.99,
-  "soda": 2.99,
+  "fresh baked tandoori bread": 2.30,
+  "tandoori bread": 2.30,
+  "hummus with warm tandoori bread": 5.75,
+  "hummus": 4.31,
+  "vegetarian grape leaves": 4.03,
+  "grape leaves": 4.03,
+  "basmati rice": 3.44,
+  "rice": 3.44,
+  "home made lentil soup": 3.74,
+  "lentil soup": 3.74,
+  "shirazi": 4.03,
+  "house salad": 6.33,
+  "yogurt and garlic": 3.74,
+  "yogurt and cucumber": 3.39,
+  "torshi": 1.73,
+  "ground beef skewer salad": 15.24,
+  "chicken kabob salad": 15.24,
+  "chicken salad": 15.24,
+  "lamb kabob salad": 15.76,
+  "lamb salad": 15.76,
+  "beef kabob salad": 15.76,
+  "beef salad": 15.76,
+  "salmon kabob salad": 15.76,
+  "salmon salad": 15.76,
+  "kubideh kabob sandwich": 11.44,
+  "kubideh sandwich": 11.44,
+  "chicken sandwich": 13.74,
+  "vegetarian sandwich": 11.44,
+  "veggie sandwich": 11.44,
+  "salmon kabob sandwich": 15.24,
+  "salmon sandwich": 15.24,
+  "lamb kabob sandwich": 14.66,
+  "lamb sandwich": 14.66,
+  "beef kabob sandwich": 13.51,
+  "beef sandwich": 13.51,
+  "bronzini fish": 23.00,
+  "bronzini": 23.00,
+  "fish": 23.00,
+  "kubideh kabob platter": 14.89,
+  "kubideh platter": 14.89,
+  "kubideh kabob": 14.89,
+  "chicken kabob platter": 14.89,
+  "chicken platter": 14.89,
+  "chicken sultani kabob platter": 16.62,
+  "chicken sultani": 16.62,
+  "lamb kabob platter": 17.19,
+  "lamb platter": 17.19,
+  "lamb sultani kabob platter": 18.40,
+  "lamb sultani": 18.40,
+  "super lamb sultani kabob platter": 21.85,
+  "super lamb sultani": 21.85,
+  "beef kabob platter": 16.04,
+  "beef platter": 16.04,
+  "beef sultani kabob platter": 16.68,
+  "beef sultani": 16.68,
+  "super beef sultani kabob platter": 22.43,
+  "super beef sultani": 22.43,
+  "steak kabob platter": 17.83,
+  "steak platter": 17.83,
+  "steak sultani kabob platter": 20.41,
+  "steak sultani": 20.41,
+  "veggie kabob platter": 13.17,
+  "veggie platter": 13.17,
+  "vegetarian platter": 13.17,
+  "salmon kabob platter": 17.77,
+  "salmon platter": 17.77,
+  "salmon sultani kabob platter": 18.92,
+  "salmon sultani": 18.92,
+  "chicken lamb combo kabob platter": 20.41,
+  "chicken lamb combo": 20.41,
+  "combo platter": 20.41,
 };
 
 function parseOrderFromTranscript(transcript: string): Array<{ id: string; name: string; price: number; qty: number }> {
   const items: Array<{ id: string; name: string; price: number; qty: number }> = [];
   const lower = transcript.toLowerCase();
+  const addedPrices = new Set<number>();
 
-  for (const [key, price] of Object.entries(MENU_ITEMS)) {
-    if (lower.includes(key)) {
-      // Check if already added
-      const exists = items.find(i => i.price === price);
-      if (!exists) {
-        // Try to find quantity
-        const qtyMatch = lower.match(new RegExp(`(\\d+)\\s*(?:x\\s*)?${key.split(' ')[0]}`));
-        const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-        items.push({
-          id: String(items.length + 1),
-          name: key.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-          price,
-          qty,
-        });
-      }
+  // Sort by length descending to match longer names first
+  const sortedItems = Object.entries(MENU_ITEMS).sort((a, b) => b[0].length - a[0].length);
+
+  for (const [key, price] of sortedItems) {
+    if (lower.includes(key) && !addedPrices.has(price)) {
+      const qtyMatch = lower.match(new RegExp(`(\\d+)\\s*(?:x\\s*)?${key.split(' ')[0]}`));
+      const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+      const displayName = key.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      items.push({ id: String(items.length + 1), name: displayName, price, qty });
+      addedPrices.add(price);
     }
   }
 
@@ -51,7 +100,7 @@ function parseOrderFromTranscript(transcript: string): Array<{ id: string; name:
 
 function extractCustomerName(transcript: string, customData: any): string {
   if (customData?.customer_name) return customData.customer_name;
-  const nameMatch = transcript.match(/(?:my name is|i(?:'m| am|'m)) ([A-Z][a-z]+)/i);
+  const nameMatch = transcript.match(/(?:my name is|i am|call me|this is)\s+([A-Za-z]+)/i);
   if (nameMatch) return nameMatch[1];
   return "Voice Customer";
 }
@@ -62,8 +111,8 @@ function extractPaymentMethod(transcript: string, customData: any): string {
   if (lower.includes("send") && lower.includes("link")) return "sms_link";
   if (lower.includes("text") || lower.includes("sms")) return "sms_link";
   if (lower.includes("card") && lower.includes("phone")) return "ivr";
-  if (lower.includes("in person") || lower.includes("arrive") || lower.includes("pick up")) return "in_person";
-  return "in_person";
+  if (lower.includes("cash") || lower.includes("arrive") || lower.includes("pick up")) return "cash";
+  return "sms_link";
 }
 
 export async function POST(request: NextRequest) {
@@ -81,26 +130,22 @@ export async function POST(request: NextRequest) {
     const transcript = callData.transcript || body.transcript || "";
 
     console.log("📝 Transcript:", transcript.slice(0, 500));
-    console.log("📦 Custom data:", JSON.stringify(customData));
 
-    // Get customer info
     const customerPhone = callData.from_number || customData.customer_phone || null;
     const customerName = extractCustomerName(transcript, customData);
     const paymentMethod = extractPaymentMethod(transcript, customData);
     const notes = customData.special_notes || "";
 
-    // Parse items from transcript
     let items = customData.order_items || [];
     if (!items.length) {
       items = parseOrderFromTranscript(transcript);
     }
 
-    // Use order_total from custom data if available
     let subtotal = 0;
     if (customData.order_total) {
       subtotal = parseFloat(customData.order_total);
     } else {
-      subtotal = items.reduce((sum: number, item: any) => sum + ((item.price || 0) * (item.qty || 1)), 0);
+      subtotal = parseFloat(items.reduce((sum: number, item: any) => sum + ((item.price || 0) * (item.qty || 1)), 0).toFixed(2));
     }
 
     const tax = parseFloat((subtotal * 0.0875).toFixed(2));
@@ -108,7 +153,6 @@ export async function POST(request: NextRequest) {
     const restaurantPayout = parseFloat((subtotal - platformFee).toFixed(2));
     const total = parseFloat((subtotal + tax).toFixed(2));
 
-    // Find restaurant
     const agentId = body.agent_id || callData.agent_id;
     let restaurantId = DEMO_RESTAURANT_ID;
     if (agentId) {
@@ -139,8 +183,6 @@ export async function POST(request: NextRequest) {
       retell_call_id: callData.call_id || body.call_id,
     };
 
-    console.log("💾 Saving order:", JSON.stringify(orderData, null, 2));
-
     const { data: order, error } = await supabaseAdmin
       .from("orders")
       .insert(orderData)
@@ -153,7 +195,11 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("✅ Order saved:", order?.order_number);
-    return NextResponse.json({ received: true, order_id: order?.id, order_number: order?.order_number });
+    return NextResponse.json({
+      received: true,
+      order_id: order?.id,
+      order_number: order?.order_number,
+    });
 
   } catch (error: any) {
     console.error("❌ Webhook error:", error);
@@ -162,5 +208,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  return NextResponse.json({ status: "VoceEats Retell webhook active" });
+  return NextResponse.json({ status: "VoceEats Retell webhook active - Bread & Kabob" });
 }
