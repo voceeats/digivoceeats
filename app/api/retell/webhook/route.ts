@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
       subtotal = parseFloat(items.reduce((sum: number, item: any) => sum + ((item.price || 0) * (item.qty || 1)), 0).toFixed(2));
     }
 
-    const tax = parseFloat((subtotal * 0.0875).toFixed(2));
+    const tax = parseFloat((subtotal * 0.06).toFixed(2));
     const platformFee = parseFloat((subtotal * 0.15).toFixed(2));
     const restaurantPayout = parseFloat((subtotal - platformFee).toFixed(2));
     const total = parseFloat((subtotal + tax).toFixed(2));
