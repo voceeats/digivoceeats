@@ -24,22 +24,16 @@ const MENU_ITEMS: Record<string, number> = {
   "chicken kabob salad": 15.24,
   "chicken salad": 15.24,
   "lamb kabob salad": 15.76,
-  "lamb salad": 15.76,
   "beef kabob salad": 15.76,
-  "beef salad": 15.76,
   "salmon kabob salad": 15.76,
-  "salmon salad": 15.76,
   "kubideh kabob sandwich": 11.44,
   "kubideh sandwich": 11.44,
   "chicken sandwich": 13.74,
   "vegetarian sandwich": 11.44,
-  "veggie sandwich": 11.44,
   "salmon kabob sandwich": 15.24,
   "salmon sandwich": 15.24,
   "lamb kabob sandwich": 14.66,
-  "lamb sandwich": 14.66,
   "beef kabob sandwich": 13.51,
-  "beef sandwich": 13.51,
   "bronzini fish": 23.00,
   "bronzini": 23.00,
   "kubideh kabob platter": 14.89,
@@ -65,17 +59,40 @@ const MENU_ITEMS: Record<string, number> = {
   "steak sultani": 20.41,
   "veggie kabob platter": 13.17,
   "veggie platter": 13.17,
-  "vegetarian platter": 13.17,
   "salmon kabob platter": 17.77,
   "salmon platter": 17.77,
   "salmon sultani kabob platter": 18.92,
   "salmon sultani": 18.92,
   "chicken lamb combo kabob platter": 20.41,
-  "chicken lamb combo": 20.41,
   "combo platter": 20.41,
 };
 
-function parseOrderFromTranscript(transcript: string) {
+function parseOrderSummary(summary: string): Array<{ id: string; name: string; price: number; qty: number }> {
+  const items: Array<{ id: string; name: string; price: number; qty: number }> = [];
+  if (!summary) return items;
+
+  // Parse format: "Item Name, qty, $price; Item Name, qty, $price"
+  const parts = summary.split(";");
+  parts.forEach((part, index) => {
+    const trimmed = part.trim();
+    if (!trimmed) return;
+
+    // Match: "Kubideh Kabob Platter, 1, $14.89"
+    const match = trimmed.match(/^(.+),\s*(\d+),\s*\$?([\d.]+)$/);
+    if (match) {
+      items.push({
+        id: String(index + 1),
+        name: match[1].trim(),
+        qty: parseInt(match[2]),
+        price: parseFloat(match[3]),
+      });
+    }
+  });
+
+  return items;
+}
+
+function parseOrderFromTranscript(transcript: string): Array<{ id: string; name: string; price: number; qty: number }> {
   const items: Array<{ id: string; name: string; price: number; qty: number }> = [];
   const lower = transcript.toLowerCase();
   const addedPrices = new Set<number>();
@@ -93,67 +110,50 @@ function parseOrderFromTranscript(transcript: string) {
   return items;
 }
 
-function extractCustomerName(transcript: string, customData: any): string {
-  if (customData?.customer_name) return customData.customer_name;
-  const match = transcript.match(/(?:my name is|i am|call me|this is)\s+([A-Za-z]+)/i);
-  return match ? match[1] : "Voice Customer";
+function formatPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11) return `+${digits}`;
+  return `+${digits}`;
 }
 
-function extractCustomerPhone(transcript: string, customData: any, callerPhone: string): string {
-  if (customData?.customer_phone) return customData.customer_phone;
-  // Try to find phone number mentioned in transcript
-  const match = transcript.match(/(\d[\d\s\-().]{7,}\d)/);
-  if (match) {
-    const digits = match[1].replace(/\D/g, '');
-    if (digits.length === 10) return `+1${digits}`;
-    if (digits.length === 11) return `+${digits}`;
-  }
-  return callerPhone;
-}
-
-function extractPaymentMethod(transcript: string, customData: any): string {
-  if (customData?.payment_method) return customData.payment_method;
-  const lower = transcript.toLowerCase();
-  if (lower.includes("send") && lower.includes("link")) return "sms_link";
-  if (lower.includes("text") || lower.includes("sms")) return "sms_link";
-  if (lower.includes("payment link")) return "sms_link";
-  if (lower.includes("card") && lower.includes("phone")) return "ivr";
-  if (lower.includes("cash") || lower.includes("arrive") || lower.includes("pick up")) return "cash";
-  return "sms_link";
-}
-
-async function sendPaymentSMS(to: string, restaurantName: string, orderNumber: string, total: number, orderId: string) {
+async function sendPaymentSMS(
+  to: string,
+  restaurantName: string,
+  orderNumber: string,
+  total: number,
+  orderId: string
+) {
   try {
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-      console.error("❌ Twilio credentials missing");
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
+      console.error("❌ Twilio credentials missing in environment");
       return false;
     }
 
     const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-    // For now send a simple payment link
-    // When Stripe is set up this will be a real Stripe link
     const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${orderId}`;
 
-    await client.messages.create({
-      from: process.env.TWILIO_PHONE_NUMBER!,
-      to,
+    const message = await client.messages.create({
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: formatPhone(to),
       body: `🍽️ ${restaurantName}
 
-Order ${orderNumber} confirmed!
+Your order ${orderNumber} is confirmed!
 Total: $${total.toFixed(2)}
 
 Pay securely here:
 ${paymentUrl}
 
-Link expires in 30 minutes.
+⏱️ Link expires in 30 minutes
+✅ Accepts Apple Pay & Google Pay
+
 Reply STOP to opt out.`,
     });
 
-    console.log(`✅ SMS sent to ${to}`);
+    console.log(`✅ SMS sent to ${to} - SID: ${message.sid}`);
     return true;
   } catch (error: any) {
-    console.error("❌ SMS error:", error.message);
+    console.error("❌ SMS send error:", error.message);
     return false;
   }
 }
@@ -162,37 +162,91 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const eventType = body.event_type || body.event;
-    console.log("📞 Retell webhook:", eventType);
+    console.log("📞 Retell webhook received:", eventType);
+    console.log("📦 Full body:", JSON.stringify(body).slice(0, 1000));
 
-    if (eventType !== "call_ended") {
+    // Process BOTH call_ended and call_analyzed
+    // call_analyzed has the custom data with order details
+    if (eventType !== "call_ended" && eventType !== "call_analyzed") {
       return NextResponse.json({ received: true, event: eventType });
     }
 
     const callData = body.call || body;
-    const customData = callData.custom_data || body.custom_data || {};
+    const callId = callData.call_id || body.call_id;
+
+    // Check if we already processed this call
+    if (callId) {
+      const { data: existing } = await supabaseAdmin
+        .from("orders")
+        .select("id")
+        .eq("retell_call_id", callId)
+        .single();
+
+      if (existing) {
+        console.log("⏭️ Order already exists for call:", callId);
+        return NextResponse.json({ received: true, duplicate: true });
+      }
+    }
+
+    // Get custom data — this is where Retell puts extracted info
+    const customData = callData.custom_data ||
+                       body.custom_data ||
+                       callData.call_analysis ||
+                       body.call_analysis ||
+                       {};
+
+    console.log("📋 Custom data:", JSON.stringify(customData));
+
     const transcript = callData.transcript || body.transcript || "";
+    const callerPhone = callData.from_number || body.from_number || null;
 
-    console.log("📝 Transcript:", transcript.slice(0, 500));
+    // Extract customer info from custom data first, then transcript
+    const customerPhone = customData.customer_phone
+      ? formatPhone(customData.customer_phone)
+      : callerPhone
+      ? formatPhone(callerPhone)
+      : null;
 
-    const callerPhone = callData.from_number || null;
-    const customerPhone = extractCustomerPhone(transcript, customData, callerPhone);
-    const customerName = extractCustomerName(transcript, customData);
-    const paymentMethod = extractPaymentMethod(transcript, customData);
+    const customerName = customData.customer_name || "Voice Customer";
+    const paymentMethod = customData.payment_method || "sms_link";
     const notes = customData.special_notes || "";
 
-    let items = customData.order_items || [];
-    if (!items.length) items = parseOrderFromTranscript(transcript);
+    // Parse items — try order_summary first (from Retell extraction)
+    // then fall back to transcript parsing
+    let items: Array<{ id: string; name: string; price: number; qty: number }> = [];
 
-    const subtotal = parseFloat(
-      items.reduce((sum: number, item: any) => sum + ((item.price || 0) * (item.qty || 1)), 0).toFixed(2)
-    );
+    if (customData.order_summary) {
+      console.log("📝 Parsing from order_summary:", customData.order_summary);
+      items = parseOrderSummary(customData.order_summary);
+    }
 
-    // 6% tax for Northern Virginia
+    if (!items.length && transcript) {
+      console.log("📝 Falling back to transcript parsing");
+      items = parseOrderFromTranscript(transcript);
+    }
+
+    console.log("🛒 Items found:", JSON.stringify(items));
+
+    // Calculate totals
+    let subtotal = 0;
+    if (customData.order_total && parseFloat(customData.order_total) > 0) {
+      // Use Retell's calculated total (includes tax already)
+      const totalWithTax = parseFloat(customData.order_total);
+      // Back-calculate subtotal from total (total = subtotal * 1.06)
+      subtotal = parseFloat((totalWithTax / 1.06).toFixed(2));
+    } else {
+      subtotal = parseFloat(
+        items.reduce((sum, item) => sum + (item.price * item.qty), 0).toFixed(2)
+      );
+    }
+
     const tax = parseFloat((subtotal * 0.06).toFixed(2));
-    const platformFee = parseFloat((subtotal * 0.15).toFixed(2));
-    const restaurantPayout = parseFloat((subtotal - platformFee).toFixed(2));
     const total = parseFloat((subtotal + tax).toFixed(2));
+    // Platform fee is the 15% already built into voiceeats_price
+    const platformFee = parseFloat((subtotal - (subtotal / 1.15)).toFixed(2));
+    const restaurantPayout = parseFloat((subtotal / 1.15).toFixed(2));
 
+    // Find restaurant by agent ID
     const agentId = body.agent_id || callData.agent_id;
     let restaurantId = DEMO_RESTAURANT_ID;
     let restaurantName = "Bread & Kabob";
@@ -209,12 +263,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Save order
     const orderData = {
       restaurant_id: restaurantId,
       customer_name: customerName,
       customer_phone: customerPhone,
-      items: items.length > 0 ? items : [{ id: "1", name: "Voice Order", qty: 1, price: 0 }],
-      notes: notes || transcript.slice(0, 500),
+      items: items.length > 0
+        ? items
+        : [{ id: "1", name: "Voice Order", qty: 1, price: subtotal }],
+      notes: notes || "",
       subtotal,
       tax,
       tip: 0,
@@ -225,8 +282,10 @@ export async function POST(request: NextRequest) {
       payment_status: paymentMethod === "cash" ? "pending" : "awaiting_payment",
       status: "pending",
       source: "voice_ai",
-      retell_call_id: callData.call_id || body.call_id,
+      retell_call_id: callId,
     };
+
+    console.log("💾 Saving order:", JSON.stringify(orderData, null, 2));
 
     const { data: order, error } = await supabaseAdmin
       .from("orders")
@@ -241,8 +300,9 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Order saved:", order?.order_number);
 
-    // Send SMS payment link if customer chose that option
+    // Send SMS payment link
     if (paymentMethod === "sms_link" && customerPhone) {
+      console.log(`📱 Sending SMS to ${customerPhone}`);
       const smsSent = await sendPaymentSMS(
         customerPhone,
         restaurantName,
@@ -250,13 +310,20 @@ export async function POST(request: NextRequest) {
         total,
         order.id
       );
-      console.log(`SMS sent: ${smsSent}`);
+      if (smsSent) {
+        await supabaseAdmin
+          .from("orders")
+          .update({ payment_link_sent_at: new Date().toISOString() })
+          .eq("id", order.id);
+      }
     }
 
     return NextResponse.json({
       received: true,
       order_id: order?.id,
       order_number: order?.order_number,
+      items_found: items.length,
+      sms_sent: paymentMethod === "sms_link",
     });
 
   } catch (error: any) {
