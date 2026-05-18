@@ -438,9 +438,107 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
   );
 }
 
+function HoursTab({ restaurantId }: { restaurantId: string }) {
+  const [hours, setHours] = useState<any>({});
+  const [prepTime, setPrepTime] = useState(25);
+  const [lastOrder, setLastOrder] = useState(45);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+  useEffect(() => {
+    loadHours();
+  }, [restaurantId]);
+
+  const loadHours = async () => {
+    const { data: rest } = await supabase
+      .from("restaurants")
+      .select("opening_hours, prep_time_minutes, last_order_minutes_before_close")
+      .eq("id", restaurantId)
+      .single();
+    if (rest) {
+      setHours(rest.opening_hours || {});
+      setPrepTime(rest.prep_time_minutes || 25);
+      setLastOrder(rest.last_order_minutes_before_close || 45);
+    }
+  };
+
+  const updateDay = (day: string, field: string, value: any) => {
+    setHours((prev: any) => ({ ...prev, [day]: { ...prev[day], [field]: value } }));
+  };
+
+  const saveHours = async () => {
+    setSaving(true);
+    await supabase.from("restaurants").update({
+      opening_hours: hours,
+      prep_time_minutes: prepTime,
+      last_order_minutes_before_close: lastOrder,
+    }).eq("id", restaurantId);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+    setSaving(false);
+  };
+
+  const inp = { background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 12px", color: "#F9FAFB", fontSize: 14, outline: "none", fontFamily: "inherit" } as React.CSSProperties;
+
+  return (
+    <div>
+      {saved && (
+        <div style={{ padding: "12px 20px", background: "rgba(0,200,150,0.1)", border: "1px solid rgba(0,200,150,0.3)", borderRadius: 12, marginBottom: 20, color: "#00C896", fontWeight: 600 }}>
+          ✅ Hours saved successfully!
+        </div>
+      )}
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 24, marginBottom: 20 }}>
+        <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16, marginBottom: 20 }}>⏰ Weekly Hours</h3>
+        <div style={{ padding: "12px 16px", background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.2)", borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ color: "#FF6B35", fontWeight: 600, fontSize: 12 }}>💡 Orders stop {lastOrder} minutes before closing. Prep time is {prepTime} minutes.</div>
+        </div>
+        {DAYS.map(day => {
+          const d = hours[day] || { open: "11:00", close: "22:00", is_closed: false };
+          return (
+            <div key={day} style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ width: 110, color: "#9CA3AF", fontSize: 13, fontWeight: 600, textTransform: "capitalize" }}>{day}</div>
+              <div onClick={() => updateDay(day, "is_closed", !d.is_closed)} style={{ width: 44, height: 24, borderRadius: 12, cursor: "pointer", background: !d.is_closed ? "#00C896" : "#374151", position: "relative", transition: "background 0.3s", flexShrink: 0 }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: !d.is_closed ? 23 : 3, transition: "left 0.3s" }} />
+              </div>
+              <span style={{ color: !d.is_closed ? "#00C896" : "#EF4444", fontSize: 12, fontWeight: 700, width: 55 }}>{!d.is_closed ? "OPEN" : "CLOSED"}</span>
+              {!d.is_closed && (
+                <>
+                  <input type="time" value={d.open} onChange={e => updateDay(day, "open", e.target.value)} style={inp} />
+                  <span style={{ color: "#6B7280" }}>to</span>
+                  <input type="time" value={d.close} onChange={e => updateDay(day, "close", e.target.value)} style={inp} />
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 24, marginBottom: 24 }}>
+        <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16, marginBottom: 20 }}>⚙️ Order Settings</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div>
+            <label style={{ display: "block", color: "#9CA3AF", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>🍳 Prep Time (minutes)</label>
+            <input type="number" value={prepTime} onChange={e => setPrepTime(parseInt(e.target.value))} min="5" max="120" style={{ ...inp, width: "100%", boxSizing: "border-box" }} />
+            <div style={{ color: "#4B5563", fontSize: 11, marginTop: 6 }}>AI says: "Ready in {prepTime} minutes"</div>
+          </div>
+          <div>
+            <label style={{ display: "block", color: "#9CA3AF", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>🕐 Last Order Before Close (mins)</label>
+            <input type="number" value={lastOrder} onChange={e => setLastOrder(parseInt(e.target.value))} min="15" max="120" style={{ ...inp, width: "100%", boxSizing: "border-box" }} />
+            <div style={{ color: "#4B5563", fontSize: 11, marginTop: 6 }}>Stop orders {lastOrder} mins before closing</div>
+          </div>
+        </div>
+      </div>
+      <button onClick={saveHours} disabled={saving} style={{ width: "100%", background: saving ? "#374151" : "linear-gradient(135deg,#FF6B35,#FF8C5A)", color: "#fff", border: "none", borderRadius: 12, padding: "14px", fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+        {saving ? "Saving..." : "Save Hours →"}
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const router = useRouter();
-  const [tab, setTab] = useState<"orders" | "menu" | "analytics">("orders");
+  const [tab, setTab] = useState<"orders" | "menu" | "analytics" | "hours">("orders");
   const [filter, setFilter] = useState("all");
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -573,7 +671,7 @@ export default function Dashboard() {
     { id: "orders", label: "Orders", icon: "📋", count: pending },
     { id: "menu", label: "Menu", icon: "🍽️" },
     { id: "analytics", label: "Analytics", icon: "📊" },
-    { id: "hours", label: "Hours", icon: "⏰" },
+    { id: "hours", label: "Hours", icon: "⏰" }
   ];
 
   const statCards = [
@@ -615,7 +713,10 @@ export default function Dashboard() {
             <div style={{ fontWeight: 700, fontSize: 14 }}>{restaurant?.name || "Loading..."}</div>
             <div style={{ color: "#6B7280", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#00C896", display: "inline-block", animation: "pulse 2s infinite" }} />
-              Live · Powered by Diginetplore
+              <div style={{ color: "#6B7280", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#00C896", display: "inline-block", animation: "pulse 2s infinite" }} />
+                Live · {restaurant?.address || "3407 Payne St, Falls Church, VA"} · Powered by Diginetplore
+              </div>
             </div>
           </div>
         </div>
@@ -712,6 +813,10 @@ export default function Dashboard() {
         {/* Menu Tab */}
         {tab === "menu" && restaurant && (
           <MenuTab restaurantId={restaurant.id} />
+        )}
+
+        {tab === "hours" && restaurant && (
+          <HoursTab restaurantId={restaurant.id} />
         )}
 
         {/* Analytics Tab */}
