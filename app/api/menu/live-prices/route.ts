@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const restaurantId = searchParams.get("restaurantId") || 
+    const restaurantId = searchParams.get("restaurantId") ||
       "339ad678-297a-4d57-9f4b-a502650829d3";
 
     const { data: items } = await supabaseAdmin
@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "No menu found" }, { status: 404 });
     }
 
-    // Format for Retell
     const menu: Record<string, any[]> = {};
     items.forEach((item: any) => {
       const cat = item.menu_categories?.name || "Other";
@@ -26,10 +25,10 @@ export async function GET(request: NextRequest) {
       menu[cat].push({
         name: item.name,
         price: `$${(item.voiceeats_price || item.price).toFixed(2)}`,
+        price_number: item.voiceeats_price || item.price,
       });
     });
 
-    // Also return as flat text for easy AI reading
     const menuText = Object.entries(menu)
       .map(([cat, catItems]) => {
         const lines = catItems.map(i => `${i.name}: ${i.price}`).join(", ");

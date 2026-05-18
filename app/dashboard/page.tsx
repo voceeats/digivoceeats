@@ -573,6 +573,7 @@ export default function Dashboard() {
     { id: "orders", label: "Orders", icon: "📋", count: pending },
     { id: "menu", label: "Menu", icon: "🍽️" },
     { id: "analytics", label: "Analytics", icon: "📊" },
+    { id: "hours", label: "Hours", icon: "⏰" },
   ];
 
   const statCards = [
