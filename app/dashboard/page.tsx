@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { detectAndPrint, type PrintOrder } from "@/lib/print";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -550,6 +551,14 @@ function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const [printerId, setPrinterId] = useState<string | null>(null);
+  const [printerIp, setPrinterIp] = useState("");
+  const [printerPort, setPrinterPort] = useState(8008);
+  const [printerType, setPrinterType] = useState<"epson" | "star">("epson");
+  const [autoDetect, setAutoDetect] = useState(true);
+  const [savingPrinter, setSavingPrinter] = useState(false);
+  const [printerMsg, setPrinterMsg] = useState("");
+
   useEffect(() => {
     setName(restaurant.name || "");
     setAddress(restaurant.address || "");
@@ -565,6 +574,44 @@ function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: 
     restaurant.tax_rate,
   ]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadPrinter = async () => {
+      const key = `voceeats_auto_detect_printer_${restaurant.id}`;
+      const raw = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+      if (!cancelled) setAutoDetect(raw === null ? true : raw === "1");
+
+      const { data } = await supabase
+        .from("printers")
+        .select("*")
+        .eq("restaurant_id", restaurant.id)
+        .eq("is_default", true)
+        .limit(1);
+      if (cancelled) return;
+      const p = data?.[0];
+      if (p) {
+        setPrinterId(p.id);
+        setPrinterIp(p.ip_address || "");
+        const pt = p.port ?? (p.type === "star" ? 9100 : 8008);
+        setPrinterPort(Number(pt));
+        setPrinterType(p.type === "star" ? "star" : "epson");
+      } else {
+        setPrinterId(null);
+        setPrinterIp("");
+        setPrinterPort(8008);
+        setPrinterType("epson");
+      }
+    };
+    loadPrinter();
+    return () => { cancelled = true; };
+  }, [restaurant.id]);
+
+  const setAutoDetectPersist = (v: boolean) => {
+    setAutoDetect(v);
+    try {
+      localStorage.setItem(`voceeats_auto_detect_printer_${restaurant.id}`, v ? "1" : "0");
+    } catch { /* ignore */ }
+  };
   const saveSettings = async () => {
     setSaving(true);
     const updates = {
@@ -586,6 +633,70 @@ function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: 
       setTimeout(() => setSaved(false), 3000);
     }
     setSaving(false);
+  };
+
+  const savePrinter = async () => {
+    setSavingPrinter(true);
+    setPrinterMsg("");
+    await supabase.from("printers").update({ is_default: false }).eq("restaurant_id", restaurant.id);
+    const portNum = Number(printerPort);
+    const port = Number.isFinite(portNum) ? portNum : (printerType === "star" ? 9100 : 8008);
+    const ip = printerIp.trim() || null;
+    const base = {
+      name: "Receipt printer",
+      type: printerType,
+      ip_address: ip,
+      port,
+      is_default: true,
+      is_online: true,
+    };
+    if (printerId) {
+      const { error } = await supabase.from("printers").update(base).eq("id", printerId);
+      setPrinterMsg(error ? error.message : "✅ Printer saved");
+    } else {
+      const { data, error } = await supabase
+        .from("printers")
+        .insert({ restaurant_id: restaurant.id, ...base })
+        .select("id")
+        .single();
+      if (error) setPrinterMsg(error.message);
+      else {
+        if (data?.id) setPrinterId(data.id);
+        setPrinterMsg("✅ Printer saved");
+      }
+    }
+    setSavingPrinter(false);
+    setTimeout(() => setPrinterMsg(""), 5000);
+  };
+
+  const testPrint = async () => {
+    setPrinterMsg("");
+    const sample: PrintOrder = {
+      order_number: "TEST-PRINT",
+      customer_name: "Test Customer",
+      items: [{ name: "Sample receipt line", qty: 1, price: 10 }],
+      subtotal: 10,
+      tax: 0.6,
+      total: 10.6,
+      platform_fee: 1.5,
+      restaurant_payout: 8.5,
+      payment_method: "sms_link",
+      restaurant_name: restaurant.name || "Restaurant",
+      restaurant_address: restaurant.address,
+      restaurant_phone: restaurant.phone,
+      created_at: new Date().toISOString(),
+    };
+    const savedPrinters =
+      !autoDetect && printerIp.trim()
+        ? [{ type: printerType, ip_address: printerIp.trim(), port: Number(printerPort) || (printerType === "star" ? 9100 : 8008) }]
+        : [];
+    try {
+      const { method } = await detectAndPrint(sample, savedPrinters);
+      setPrinterMsg(`Test sent (${method})`);
+      setTimeout(() => setPrinterMsg(""), 4000);
+    } catch (e: any) {
+      setPrinterMsg(e?.message || "Print failed");
+    }
   };
 
   const inp = {
@@ -662,6 +773,77 @@ function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: 
             <div style={{ color: "#F9FAFB", fontWeight: 700, fontSize: 18 }}>(703) 686-5337</div>
             <div style={{ color: "#6B7280", fontSize: 13 }}>Customers call this number to place voice orders</div>
           </div>
+        </div>
+      </div>
+
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 28, marginBottom: 24 }}>
+        <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16, marginBottom: 20 }}>🖨️ Printer Settings</h3>
+        {printerMsg && (
+          <div style={{ padding: "12px 14px", background: "rgba(255,255,255,0.05)", borderRadius: 10, marginBottom: 16, color: "#D1D5DB", fontSize: 13 }}>
+            {printerMsg}
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+          <span style={{ color: "#9CA3AF", fontSize: 13, fontWeight: 600 }}>Auto-detect</span>
+          <button
+            type="button"
+            onClick={() => setAutoDetectPersist(!autoDetect)}
+            aria-pressed={autoDetect}
+            style={{
+              width: 44,
+              height: 24,
+              borderRadius: 12,
+              border: "none",
+              cursor: "pointer",
+              background: autoDetect ? "#00C896" : "#374151",
+              position: "relative",
+              transition: "background 0.3s",
+              flexShrink: 0,
+              padding: 0,
+            }}
+          >
+            <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: autoDetect ? 23 : 3, transition: "left 0.3s", display: "block" }} />
+          </button>
+          <span style={{ color: autoDetect ? "#00C896" : "#6B7280", fontSize: 13, fontWeight: 700 }}>{autoDetect ? "ON" : "OFF"}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={lbl}>Network Printer IP</label>
+            <input value={printerIp} onChange={e => setPrinterIp(e.target.value)} style={inp} placeholder="192.168.1.100" />
+          </div>
+          <div>
+            <label style={lbl}>Port</label>
+            <input
+              type="number"
+              value={printerPort}
+              onChange={e => setPrinterPort(Number.isFinite(parseInt(e.target.value, 10)) ? parseInt(e.target.value, 10) : 8008)}
+              style={inp}
+            />
+          </div>
+          <div>
+            <label style={lbl}>Type</label>
+            <select
+              value={printerType}
+              onChange={e => setPrinterType(e.target.value as "epson" | "star")}
+              style={{ ...inp, cursor: "pointer" }}
+            >
+              <option value="epson">Epson</option>
+              <option value="star">Star</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ color: "#4B5563", fontSize: 11, marginTop: 12, lineHeight: 1.45 }}>
+          {autoDetect
+            ? "Test print probes common LAN IPs, then opens browser print. Turn Auto-detect off to print via the IP below first."
+            : "Test print uses this printer first. Save Printer stores it as the default for this location."}
+        </div>
+        <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
+          <button type="button" onClick={testPrint} style={{ ...S.btn("#6366F1"), flex: "1 1 140px" }}>
+            Test Print
+          </button>
+          <button type="button" onClick={savePrinter} disabled={savingPrinter} style={{ ...S.btn("#FF6B35"), flex: "1 1 140px", opacity: savingPrinter ? 0.7 : 1, cursor: savingPrinter ? "wait" : "pointer" }}>
+            {savingPrinter ? "Saving..." : "Save Printer"}
+          </button>
         </div>
       </div>
 

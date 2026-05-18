@@ -1,226 +1,256 @@
-import { Order, Restaurant, Printer } from "./supabase";
-
-export function buildReceiptHTML(
-  order: Order,
-  restaurant: { name: string; address?: string; phone?: string; logo?: string },
-  paperWidth: "58mm" | "80mm" = "80mm"
-): string {
-  const width = paperWidth === "58mm" ? "58mm" : "80mm";
-  const fontSize = paperWidth === "58mm" ? "11px" : "12px";
-
-  const itemsHTML = order.items
-    .map((item: any) => `
-    <div class="row">
-      <span>${item.qty}x ${item.name}</span>
-      <span>$${(item.price * item.qty).toFixed(2)}</span>
-    </div>`
-    ).join("");
-
-  const timeStr = new Date(order.created_at).toLocaleTimeString("en-US", {
-    hour: "2-digit", minute: "2-digit",
-  });
-  const dateStr = new Date(order.created_at).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-  });
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Receipt - ${order.order_number}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: ${fontSize};
-      width: ${width};
-      max-width: ${width};
-      padding: 8px;
-      color: #000;
-      background: #fff;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .large { font-size: 16px; }
-    .xlarge { font-size: 20px; }
-    .small { font-size: 10px; }
-    .divider { border-top: 1px dashed #000; margin: 6px 0; }
-    .solid { border-top: 2px solid #000; margin: 6px 0; }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin: 3px 0;
-      gap: 4px;
-    }
-    .row span:first-child { flex: 1; }
-    .row span:last-child { white-space: nowrap; }
-    @media print {
-      body { margin: 0; }
-      @page { margin: 0; size: ${width} auto; }
-    }
-  </style>
-</head>
-<body>
-  <div class="center" style="margin-bottom:8px">
-    ${restaurant.logo ? `<div style="font-size:28px;margin-bottom:4px">${restaurant.logo}</div>` : ""}
-    <div class="bold xlarge">${restaurant.name}</div>
-    ${restaurant.address ? `<div class="small">${restaurant.address}</div>` : ""}
-    ${restaurant.phone ? `<div class="small">${restaurant.phone}</div>` : ""}
-    <div class="small">voiceeats.com</div>
-  </div>
-  <div class="solid"></div>
-  <div class="row"><span class="bold">ORDER #</span><span class="bold">${order.order_number}</span></div>
-  <div class="row"><span>Date:</span><span>${dateStr}</span></div>
-  <div class="row"><span>Time:</span><span>${timeStr}</span></div>
-  <div class="row"><span>Customer:</span><span>${order.customer_name || "Voice Order"}</span></div>
-  ${order.customer_phone ? `<div class="row"><span>Phone:</span><span>${order.customer_phone}</span></div>` : ""}
-  <div class="row"><span>Source:</span><span>Voice AI</span></div>
-  ${order.notes ? `<div class="divider"></div><div class="bold">NOTES:</div><div>${order.notes}</div>` : ""}
-  <div class="divider"></div>
-  <div class="bold" style="margin-bottom:4px">ITEMS</div>
-  ${itemsHTML}
-  <div class="divider"></div>
-  <div class="row"><span>Subtotal:</span><span>$${order.subtotal.toFixed(2)}</span></div>
-  ${order.tax > 0 ? `<div class="row"><span>Tax:</span><span>$${order.tax.toFixed(2)}</span></div>` : ""}
-  ${order.tip > 0 ? `<div class="row"><span>Tip:</span><span>$${order.tip.toFixed(2)}</span></div>` : ""}
-  <div class="row"><span>Service Fee:</span><span>$${order.platform_fee.toFixed(2)}</span></div>
-  <div class="solid"></div>
-  <div class="row bold large"><span>TOTAL:</span><span>$${order.total.toFixed(2)}</span></div>
-  <div class="solid"></div>
-  <div class="center">
-    ${order.payment_status === "paid" ? `<div style="border:1px solid #000;padding:2px 6px;display:inline-block;font-size:10px">✅ PAID</div>` :
-      order.payment_status === "cash_collected" ? `<div style="border:1px solid #000;padding:2px 6px;display:inline-block;font-size:10px">💵 CASH</div>` :
-      `<div style="border:1px solid #000;padding:2px 6px;display:inline-block;font-size:10px">⏳ PAYMENT PENDING</div>`}
-  </div>
-  <div class="divider"></div>
-  <div class="small center">
-    <div>Your Payout: $${order.restaurant_payout.toFixed(2)} (85%)</div>
-    <div>VoceEats Fee: $${order.platform_fee.toFixed(2)} (15%)</div>
-  </div>
-  <div class="divider"></div>
-  <div class="center small" style="margin-top:10px">
-    <div>Powered by VoceEats</div>
-    <div>voiceeats.com | Diginetplore</div>
-    <div style="margin-top:6px">Thank you for your order!</div>
-  </div>
-</body>
-</html>`;
+export interface PrintOrder {
+  order_number: string;
+  customer_name?: string;
+  customer_phone?: string;
+  items: Array<{ name: string; qty: number; price: number }>;
+  subtotal: number;
+  tax: number;
+  total: number;
+  platform_fee: number;
+  restaurant_payout: number;
+  payment_method?: string;
+  notes?: string;
+  restaurant_name: string;
+  restaurant_address?: string;
+  restaurant_phone?: string;
+  created_at: string;
 }
 
-export function browserPrint(
-  order: Order,
-  restaurant: { name: string; address?: string; phone?: string; logo?: string },
-  paperWidth: "58mm" | "80mm" = "80mm"
-): void {
-  const html = buildReceiptHTML(order, restaurant, paperWidth);
-  const printWindow = window.open("", "_blank", "width=500,height=700");
-  if (!printWindow) {
-    alert("Please allow popups to print receipts");
-    return;
+// Format receipt text for thermal printers
+function formatReceipt(order: PrintOrder): string {
+  const line = "─".repeat(32);
+  const center = (text: string, width = 32) => {
+    const pad = Math.max(0, Math.floor((width - text.length) / 2));
+    return " ".repeat(pad) + text;
+  };
+  const row = (left: string, right: string, width = 32) => {
+    const space = width - left.length - right.length;
+    return left + " ".repeat(Math.max(1, space)) + right;
+  };
+
+  const time = new Date(order.created_at).toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit"
+  });
+  const date = new Date(order.created_at).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric"
+  });
+
+  let receipt = "";
+  receipt += center(order.restaurant_name) + "\n";
+  if (order.restaurant_address) receipt += center(order.restaurant_address) + "\n";
+  if (order.restaurant_phone) receipt += center(order.restaurant_phone) + "\n";
+  receipt += "\n";
+  receipt += center("*** VOICE AI ORDER ***") + "\n";
+  receipt += "\n";
+  receipt += row("Order:", order.order_number) + "\n";
+  receipt += row("Date:", date) + "\n";
+  receipt += row("Time:", time) + "\n";
+  if (order.customer_name) receipt += row("Customer:", order.customer_name) + "\n";
+  if (order.customer_phone) receipt += row("Phone:", order.customer_phone) + "\n";
+  receipt += line + "\n";
+  receipt += "ITEMS:\n";
+  receipt += line + "\n";
+
+  order.items.forEach(item => {
+    const itemTotal = `$${(item.price * item.qty).toFixed(2)}`;
+    receipt += row(`${item.qty}x ${item.name}`, itemTotal) + "\n";
+  });
+
+  receipt += line + "\n";
+  receipt += row("Subtotal:", `$${order.subtotal.toFixed(2)}`) + "\n";
+  receipt += row("Tax (6%):", `$${order.tax.toFixed(2)}`) + "\n";
+  receipt += row("TOTAL:", `$${order.total.toFixed(2)}`) + "\n";
+  receipt += line + "\n";
+  receipt += row("Payment:", (order.payment_method || "").replace(/_/g, " ")) + "\n";
+  receipt += row("Restaurant gets:", `$${order.restaurant_payout.toFixed(2)}`) + "\n";
+
+  if (order.notes) {
+    receipt += line + "\n";
+    receipt += "NOTES:\n";
+    receipt += order.notes + "\n";
   }
+
+  receipt += line + "\n";
+  receipt += center("Powered by VoceEats") + "\n";
+  receipt += center("digivoceeats.com") + "\n";
+  receipt += "\n\n\n";
+
+  return receipt;
+}
+
+// Generate HTML receipt for browser printing
+function generateReceiptHTML(order: PrintOrder): string {
+  const time = new Date(order.created_at).toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit"
+  });
+  const date = new Date(order.created_at).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric"
+  });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Receipt - ${order.order_number}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Courier New', monospace; 
+          font-size: 12px;
+          width: 80mm;
+          margin: 0 auto;
+          padding: 8px;
+        }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .large { font-size: 14px; }
+        .line { border-top: 1px dashed #000; margin: 6px 0; }
+        .row { display: flex; justify-content: space-between; margin: 2px 0; }
+        .total-row { font-weight: bold; font-size: 14px; }
+        .section { margin: 6px 0; }
+        @media print {
+          body { width: 80mm; }
+          @page { margin: 0; size: 80mm auto; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="center bold large">${order.restaurant_name}</div>
+      ${order.restaurant_address ? `<div class="center">${order.restaurant_address}</div>` : ""}
+      ${order.restaurant_phone ? `<div class="center">${order.restaurant_phone}</div>` : ""}
+      <div class="line"></div>
+      <div class="center bold">*** VOICE AI ORDER ***</div>
+      <div class="line"></div>
+      <div class="section">
+        <div class="row"><span>Order:</span><span>${order.order_number}</span></div>
+        <div class="row"><span>Date:</span><span>${date}</span></div>
+        <div class="row"><span>Time:</span><span>${time}</span></div>
+        ${order.customer_name ? `<div class="row"><span>Customer:</span><span>${order.customer_name}</span></div>` : ""}
+        ${order.customer_phone ? `<div class="row"><span>Phone:</span><span>${order.customer_phone}</span></div>` : ""}
+      </div>
+      <div class="line"></div>
+      <div class="bold">ITEMS:</div>
+      <div class="line"></div>
+      <div class="section">
+        ${order.items.map(item => `
+          <div class="row">
+            <span>${item.qty}x ${item.name}</span>
+            <span>$${(item.price * item.qty).toFixed(2)}</span>
+          </div>
+        `).join("")}
+      </div>
+      <div class="line"></div>
+      <div class="section">
+        <div class="row"><span>Subtotal:</span><span>$${order.subtotal.toFixed(2)}</span></div>
+        <div class="row"><span>Tax (6%):</span><span>$${order.tax.toFixed(2)}</span></div>
+        <div class="row total-row"><span>TOTAL:</span><span>$${order.total.toFixed(2)}</span></div>
+      </div>
+      <div class="line"></div>
+      <div class="section">
+        <div class="row"><span>Payment:</span><span>${(order.payment_method || "").replace(/_/g, " ")}</span></div>
+        <div class="row"><span>Your payout:</span><span>$${order.restaurant_payout.toFixed(2)}</span></div>
+      </div>
+      ${order.notes ? `
+        <div class="line"></div>
+        <div class="bold">NOTES:</div>
+        <div>${order.notes}</div>
+      ` : ""}
+      <div class="line"></div>
+      <div class="center">Powered by VoceEats</div>
+      <div class="center">digivoceeats.com</div>
+    </body>
+    </html>
+  `;
+}
+
+// Try Epson ePOS network printer
+async function tryEpsonPrint(
+  order: PrintOrder,
+  ipAddress: string,
+  port = 8008
+): Promise<boolean> {
+  try {
+    const receipt = formatReceipt(order);
+    const response = await fetch(`http://${ipAddress}:${port}/cgi-bin/epos/service.cgi`, {
+      method: "POST",
+      headers: { "Content-Type": "text/xml; charset=utf-8" },
+      body: `<?xml version="1.0" encoding="utf-8"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+          <s:Body>
+            <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+              <text lang="en">${receipt}</text>
+              <cut type="feed"/>
+            </epos-print>
+          </s:Body>
+        </s:Envelope>`,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Try Star network printer
+async function tryStarPrint(
+  order: PrintOrder,
+  ipAddress: string,
+  port = 9100
+): Promise<boolean> {
+  try {
+    const receipt = formatReceipt(order);
+    const response = await fetch(`/api/print/star`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ipAddress, port, text: receipt }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Browser window.print fallback
+function browserPrint(order: PrintOrder): void {
+  const html = generateReceiptHTML(order);
+  const printWindow = window.open("", "_blank", "width=400,height=600");
+  if (!printWindow) return;
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
   setTimeout(() => {
     printWindow.print();
-    setTimeout(() => printWindow.close(), 1000);
+    printWindow.close();
   }, 500);
 }
 
-export async function networkPrint(
-  order: Order,
-  restaurant: { name: string; address?: string; phone?: string; logo?: string },
-  printer: Printer
-): Promise<{ success: boolean; error?: string }> {
-  if (printer.type === "epson_epos") {
-    try {
-      const xml = `<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-  <s:Body>
-    <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-      <text align="center" font="font_a" width="2" height="2">${restaurant.name}\n</text>
-      <text align="center">${restaurant.address || ""}\n</text>
-      <text>--------------------------------\n</text>
-      <text>Order: ${order.order_number}\n</text>
-      <text>Customer: ${order.customer_name || "Voice Order"}\n</text>
-      <text>--------------------------------\n</text>
-      ${order.items.map((i: any) => `<text>${i.qty}x ${i.name}   $${(i.price * i.qty).toFixed(2)}\n</text>`).join("")}
-      <text>--------------------------------\n</text>
-      <text>TOTAL: $${order.total.toFixed(2)}\n</text>
-      <text align="center">Powered by VoceEats\n</text>
-      <cut type="feed"/>
-    </epos-print>
-  </s:Body>
-</s:Envelope>`;
-
-      const response = await fetch(
-        `http://${printer.ip_address}:${printer.port}/cgi-bin/epos/service.cgi`,
-        { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: '""' }, body: xml }
-      );
-      if (!response.ok) throw new Error(`Epson error: ${response.status}`);
-      return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+// Detect available printers and auto-select
+export async function detectAndPrint(
+  order: PrintOrder,
+  savedPrinters: Array<{ type: string; ip_address?: string; port?: number }> = []
+): Promise<{ success: boolean; method: string }> {
+  // Try saved network printers first
+  for (const printer of savedPrinters) {
+    if (printer.type === "epson" && printer.ip_address) {
+      const success = await tryEpsonPrint(order, printer.ip_address, printer.port);
+      if (success) return { success: true, method: "Epson Network Printer" };
+    }
+    if (printer.type === "star" && printer.ip_address) {
+      const success = await tryStarPrint(order, printer.ip_address, printer.port);
+      if (success) return { success: true, method: "Star Network Printer" };
     }
   }
 
-  if (printer.type === "star_micronics") {
-    try {
-      const request = {
-        printContents: [
-          { type: "text", value: `${restaurant.name}\n`, style: { align: "center", bold: true, fontSize: "large" } },
-          { type: "text", value: "--------------------------------\n" },
-          { type: "text", value: `Order: ${order.order_number}\n` },
-          { type: "text", value: "--------------------------------\n" },
-          ...order.items.map((item: any) => ({ type: "text", value: `${item.qty}x ${item.name}   $${(item.price * item.qty).toFixed(2)}\n` })),
-          { type: "text", value: "================================\n" },
-          { type: "text", value: `TOTAL: $${order.total.toFixed(2)}\n`, style: { bold: true } },
-          { type: "text", value: "Powered by VoceEats\n", style: { align: "center" } },
-          { type: "cut" },
-        ],
-      };
-      const response = await fetch(`http://${printer.ip_address}/StarWebPRNT/SendMessage`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
-      });
-      if (!response.ok) throw new Error(`Star error: ${response.status}`);
-      return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+  // Try common network printer IPs on local network
+  const commonIPs = ["192.168.1.100", "192.168.1.101", "192.168.0.100"];
+  for (const ip of commonIPs) {
+    const success = await tryEpsonPrint(order, ip);
+    if (success) return { success: true, method: `Auto-detected printer at ${ip}` };
   }
 
-  browserPrint(order, restaurant, printer.paper_width);
-  return { success: true };
+  // Fall back to browser print
+  browserPrint(order);
+  return { success: true, method: "Browser Print" };
 }
 
-export function testPrint(
-  printer: Printer,
-  restaurant: { name: string; address?: string; phone?: string }
-): void {
-  const testOrder = {
-    id: "test",
-    order_number: "TEST-001",
-    restaurant_id: "",
-    customer_name: "Test Customer",
-    customer_phone: "+1 (555) 000-0000",
-    items: [
-      { id: "1", name: "Test Item One", qty: 1, price: 9.99 },
-      { id: "2", name: "Test Item Two", qty: 2, price: 4.99 },
-    ],
-    notes: "This is a test print",
-    subtotal: 19.97,
-    tax: 1.75,
-    tip: 0,
-    platform_fee: 3.00,
-    restaurant_payout: 16.97,
-    total: 22.72,
-    payment_method: "sms_link",
-    payment_status: "paid",
-    status: "completed",
-    source: "voice_ai",
-    created_at: new Date().toISOString(),
-  } as Order;
-
-  browserPrint(testOrder, restaurant, printer.paper_width);
-}
+export { browserPrint, generateReceiptHTML };
