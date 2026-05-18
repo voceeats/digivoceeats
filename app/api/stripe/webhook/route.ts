@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { constructWebhookEvent, stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendOrderConfirmation, sendIVRPaymentConfirmation } from "@/lib/twilio";
+import { sendIVRPaymentConfirmation, sendOrderConfirmation } from "@/lib/twilio";
+import twilio from "twilio";
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -11,11 +13,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing signature" }, { status: 400 });
   }
 
-  let event;
+  let event: Stripe.Event;
   try {
     event = constructWebhookEvent(body, signature);
-  } catch (error: any) {
-    console.error("Stripe webhook verification failed:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Verification failed";
+    console.error("Stripe webhook verification failed:", msg);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -23,30 +26,147 @@ export async function POST(request: NextRequest) {
 
   try {
     switch (event.type) {
+      case "checkout.session.completed":
+        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
       case "payment_intent.succeeded":
-        await handlePaymentSuccess(event.data.object as any);
+        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
         break;
       case "payment_intent.payment_failed":
-        await handlePaymentFailed(event.data.object as any);
+        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
         break;
       case "account.updated":
-        await handleConnectAccountUpdate(event.data.object as any);
+        await handleConnectAccountUpdate(event.data.object as Stripe.Account);
         break;
       case "transfer.created":
-        await handleTransferCreated(event.data.object as any);
+        await handleTransferCreated(event.data.object as Stripe.Transfer);
         break;
       default:
         console.log(`Unhandled event: ${event.type}`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Webhook handler error";
     console.error("Webhook handler error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
 }
 
-async function handlePaymentSuccess(paymentIntent: any) {
+function paymentIntentIdFromSession(session: Stripe.Checkout.Session): string | null {
+  const pi = session.payment_intent;
+  if (!pi) return null;
+  return typeof pi === "string" ? pi : pi.id;
+}
+
+async function bumpCustomerStats(phoneRaw: string | null | undefined, amount: number) {
+  if (!phoneRaw?.trim()) return;
+  const cleaned = phoneRaw.replace(/\D/g, "");
+  const formatted = `+1${cleaned.slice(-10)}`;
+
+  const { data: cust } = await supabaseAdmin
+    .from("customers")
+    .select("id, total_orders, total_spent")
+    .eq("phone", formatted)
+    .maybeSingle();
+
+  if (!cust) return;
+
+  const prevSpent = Number(cust.total_spent ?? 0);
+  const add = Number(amount) || 0;
+
+  await supabaseAdmin
+    .from("customers")
+    .update({
+      total_orders: (cust.total_orders ?? 0) + 1,
+      total_spent: prevSpent + add,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", cust.id);
+}
+
+async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+  const orderId = session.metadata?.order_id;
+  if (!orderId) return;
+
+  const { data: existing } = await supabaseAdmin
+    .from("orders")
+    .select("payment_status")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (existing?.payment_status === "paid") {
+    console.log(`Checkout session complete skipped — order ${orderId} already paid`);
+    return;
+  }
+
+  const piId = paymentIntentIdFromSession(session);
+
+  await supabaseAdmin
+    .from("orders")
+    .update({
+      payment_status: "paid",
+      status: "accepted",
+      paid_at: new Date().toISOString(),
+      stripe_payment_intent_id: piId,
+      accepted_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+
+  const { data: order } = await supabaseAdmin
+    .from("orders")
+    .select("*, restaurants(*)")
+    .eq("id", orderId)
+    .single();
+
+  if (!order) return;
+
+  const restaurant = order.restaurants as { name?: string } | null;
+  const restaurantName = restaurant?.name || "the restaurant";
+  const phone =
+    (session.metadata?.customer_phone && String(session.metadata.customer_phone).trim()) ||
+    order.customer_phone ||
+    "";
+
+  const totalNum =
+    typeof order.total === "string" ? parseFloat(order.total) : Number(order.total);
+
+  console.log(`✅ Order ${order.order_number} marked paid (checkout.session.completed)`);
+
+  if (phone && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
+    try {
+      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await client.messages.create({
+        to: phone,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        body: `✅ Payment confirmed for your order at ${restaurantName}!
+
+Order: ${order.order_number}
+Total paid: $${totalNum.toFixed(2)}
+
+Your food will be ready in approximately 25 minutes. Thank you for using VoceEats!
+
+Reply STOP to opt out.`,
+      });
+      console.log(`📱 Confirmation SMS sent to ${phone}`);
+    } catch (smsError: unknown) {
+      const m = smsError instanceof Error ? smsError.message : String(smsError);
+      console.error("SMS confirmation failed:", m);
+    }
+  }
+
+  await bumpCustomerStats(phone || order.customer_phone, totalNum);
+
+  await supabaseAdmin.from("notifications").insert({
+    restaurant_id: order.restaurant_id,
+    type: "payment_received",
+    title: "Payment Received!",
+    message: `$${totalNum.toFixed(2)} received for order ${order.order_number}`,
+    order_id: orderId,
+  });
+}
+
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   const orderId = paymentIntent.metadata?.order_id;
   if (!orderId) return;
 
@@ -57,26 +177,82 @@ async function handlePaymentSuccess(paymentIntent: any) {
     .single();
 
   if (!order) return;
+  if (order.payment_status === "paid") return;
 
-  const restaurant = order.restaurants as any;
+  const restaurant = order.restaurants as {
+    name?: string;
+    stripe_account_id?: string | null;
+  } | null;
+
+  // Connect Checkout / destination charges: Stripe routes funds; do not create a second Transfer.
+  if (paymentIntent.transfer_data?.destination) {
+    await supabaseAdmin
+      .from("orders")
+      .update({
+        payment_status: "paid",
+        status: "accepted",
+        paid_at: new Date().toISOString(),
+        stripe_payment_intent_id: paymentIntent.id,
+        accepted_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (order.customer_phone) {
+      if (order.payment_method === "ivr" && paymentIntent.latest_charge) {
+        const chargeData = await stripe.charges.retrieve(paymentIntent.latest_charge as string);
+        await sendIVRPaymentConfirmation({
+          to: order.customer_phone,
+          restaurantName: restaurant?.name || "Restaurant",
+          orderNumber: order.order_number,
+          total: typeof order.total === "string" ? parseFloat(order.total) : Number(order.total),
+          last4: chargeData.payment_method_details?.card?.last4 || "****",
+        });
+      } else {
+        await sendOrderConfirmation({
+          to: order.customer_phone,
+          restaurantName: restaurant?.name || "Restaurant",
+          orderNumber: order.order_number,
+          items: Array.isArray(order.items)
+            ? order.items.map((i: { name?: string; qty?: number }) => ({
+                name: String(i?.name ?? ""),
+                qty: Number(i?.qty) || 1,
+              }))
+            : [],
+          total: typeof order.total === "string" ? parseFloat(order.total) : Number(order.total),
+        });
+      }
+    }
+
+    await supabaseAdmin.from("notifications").insert({
+      restaurant_id: order.restaurant_id,
+      type: "payment_received",
+      title: "Payment Received!",
+      message: `$${Number(order.total).toFixed(2)} received for order ${order.order_number}`,
+      order_id: orderId,
+    });
+
+    console.log("✅ Payment processed (destination charge):", order.order_number);
+    return;
+  }
 
   await supabaseAdmin
     .from("orders")
     .update({
       payment_status: "paid",
-      status: "pending",
+      status: "accepted",
       paid_at: new Date().toISOString(),
       stripe_payment_intent_id: paymentIntent.id,
+      accepted_at: new Date().toISOString(),
     })
     .eq("id", orderId);
 
   if (restaurant?.stripe_account_id) {
     try {
       const transfer = await stripe.transfers.create({
-        amount: Math.round(order.restaurant_payout * 100),
+        amount: Math.round(Number(order.restaurant_payout) * 100),
         currency: "usd",
         destination: restaurant.stripe_account_id,
-        source_transaction: paymentIntent.latest_charge,
+        source_transaction: paymentIntent.latest_charge as string | undefined,
         metadata: {
           order_id: orderId,
           order_number: order.order_number,
@@ -84,10 +260,7 @@ async function handlePaymentSuccess(paymentIntent: any) {
         },
       });
 
-      await supabaseAdmin
-        .from("orders")
-        .update({ stripe_transfer_id: transfer.id })
-        .eq("id", orderId);
+      await supabaseAdmin.from("orders").update({ stripe_transfer_id: transfer.id }).eq("id", orderId);
 
       await supabaseAdmin.from("payouts").insert({
         restaurant_id: order.restaurant_id,
@@ -103,12 +276,12 @@ async function handlePaymentSuccess(paymentIntent: any) {
 
   if (order.customer_phone) {
     if (order.payment_method === "ivr" && paymentIntent.latest_charge) {
-      const chargeData = await stripe.charges.retrieve(paymentIntent.latest_charge);
+      const chargeData = await stripe.charges.retrieve(paymentIntent.latest_charge as string);
       await sendIVRPaymentConfirmation({
         to: order.customer_phone,
         restaurantName: restaurant?.name || "Restaurant",
         orderNumber: order.order_number,
-        total: order.total,
+        total: typeof order.total === "string" ? parseFloat(order.total) : Number(order.total),
         last4: chargeData.payment_method_details?.card?.last4 || "****",
       });
     } else {
@@ -116,8 +289,13 @@ async function handlePaymentSuccess(paymentIntent: any) {
         to: order.customer_phone,
         restaurantName: restaurant?.name || "Restaurant",
         orderNumber: order.order_number,
-        items: order.items,
-        total: order.total,
+        items: Array.isArray(order.items)
+          ? order.items.map((i: { name?: string; qty?: number }) => ({
+              name: String(i?.name ?? ""),
+              qty: Number(i?.qty) || 1,
+            }))
+          : [],
+        total: typeof order.total === "string" ? parseFloat(order.total) : Number(order.total),
       });
     }
   }
@@ -126,14 +304,14 @@ async function handlePaymentSuccess(paymentIntent: any) {
     restaurant_id: order.restaurant_id,
     type: "payment_received",
     title: "Payment Received!",
-    message: `$${order.total.toFixed(2)} received for order ${order.order_number}`,
+    message: `$${Number(order.total).toFixed(2)} received for order ${order.order_number}`,
     order_id: orderId,
   });
 
   console.log("✅ Payment processed for order:", order.order_number);
 }
 
-async function handlePaymentFailed(paymentIntent: any) {
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
   const orderId = paymentIntent.metadata?.order_id;
   if (!orderId) return;
 
@@ -145,11 +323,11 @@ async function handlePaymentFailed(paymentIntent: any) {
   console.log("❌ Payment failed for order:", orderId);
 }
 
-async function handleConnectAccountUpdate(account: any) {
+async function handleConnectAccountUpdate(account: Stripe.Account) {
   const isComplete =
-    account.charges_enabled &&
-    account.payouts_enabled &&
-    account.details_submitted;
+    Boolean(account.charges_enabled) &&
+    Boolean(account.payouts_enabled) &&
+    Boolean(account.details_submitted);
 
   await supabaseAdmin
     .from("restaurants")
@@ -159,12 +337,9 @@ async function handleConnectAccountUpdate(account: any) {
   console.log(`Stripe account ${account.id} updated — complete: ${isComplete}`);
 }
 
-async function handleTransferCreated(transfer: any) {
+async function handleTransferCreated(transfer: Stripe.Transfer) {
   const orderId = transfer.metadata?.order_id;
   if (!orderId) return;
 
-  await supabaseAdmin
-    .from("payouts")
-    .update({ status: "in_transit" })
-    .eq("stripe_transfer_id", transfer.id);
+  await supabaseAdmin.from("payouts").update({ status: "in_transit" }).eq("stripe_transfer_id", transfer.id);
 }
