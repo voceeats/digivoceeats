@@ -15,6 +15,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No Retell agent found" }, { status: 400 });
     }
 
+    // First get the agent to find the LLM ID
+    const agentResponse = await fetch(
+      `https://api.retellai.com/get-agent/${restaurant.retell_agent_id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+        },
+      }
+    );
+
+    const agentData = await agentResponse.json();
+    const llmId = agentData?.response_engine?.llm_id;
+
+    console.log(`🤖 Agent: ${restaurant.retell_agent_id}`);
+    console.log(`🧠 LLM ID: ${llmId}`);
+
+    if (!llmId) {
+      return NextResponse.json({ error: "No LLM ID found" }, { status: 400 });
+    }
+
+    // Get menu items
     const { data: items } = await supabaseAdmin
       .from("menu_items")
       .select("*, menu_categories(name)")
@@ -53,98 +74,71 @@ Say: "Thank you for calling ${restaurant.name}! What can I get for you today?"
 
 TAKING ORDERS:
 - When customer orders an item confirm it WITHOUT saying the price
-- Example: Customer: "I want a chicken kabob platter"
-  You: "Got it! One Chicken Kabob Platter. Anything else?"
 - NEVER say the price of each item as you take it
 - Only say prices when customer specifically asks
 
 WHEN CUSTOMER ASKS ABOUT A CATEGORY:
 - List item NAMES only, NO prices
 - Example: Customer: "What sandwiches do you have?"
-  You: "We have Kubideh Kabob, Chicken, Vegetarian, Salmon Kabob, Lamb Kabob, and Beef Kabob sandwiches. Which would you like?"
+  You: "We have Kubideh Kabob, Chicken, Vegetarian, Salmon Kabob, Lamb Kabob, and Beef Kabob sandwiches."
 
 WHEN CUSTOMER ASKS FOR A PRICE:
 - Then and only then tell the price
-- Example: Customer: "How much is the chicken sandwich?"
-  You: "The Chicken Sandwich is $13.74"
 
 CONFIRMING ORDER:
-- After customer is done ordering confirm ALL items together ONCE with total
+- Confirm ALL items together ONCE with total
 - Say total price ONCE only
-- Example: "So that's one Chicken Kabob Platter and one Hummus. Your total including tax is $20.17. Shall I send you a secure payment link?"
 
-PAYMENT - ONE OPTION ONLY:
-- Only offer SMS payment link
-- Say: "I'll send you a secure payment link by text right now. What's your phone number?"
-- After they give number say: "Perfect! Sending your payment link now. Thank you for calling ${restaurant.name}!"
-- NEVER mention card over phone
-- NEVER mention cash
-- NEVER mention paying in person
+PAYMENT - SMS LINK ONLY:
+- Say: "I'll send you a secure payment link by text. What's your phone number?"
+- NEVER mention card, cash, or paying in person
 
 IDENTITY:
-- Never say you are an AI or virtual assistant
-- If asked say: "I'm here to take your order! What can I get for you?"
+- Never say you are an AI
+- If asked say: "I'm here to take your order!"
 
-CRITICAL BEHAVIOR:
-- Say each item ONCE only when confirming
-- NEVER repeat the order summary more than once
-- Keep responses SHORT and natural
-- Maximum one sentence per response when possible
+CRITICAL:
+- Say each item ONCE only
+- Keep responses SHORT
+- Never repeat order summary more than once
 
-CURRENT MENU (these are the prices to quote customers):
+CURRENT MENU:
 ${menuText}
 
 Tax rate: ${(taxRate * 100).toFixed(1)}%
 Restaurant: ${restaurant.name}
-Address: ${restaurant.address || ""}
+All meat is Halal.`;
 
-HANDLING ACCENTS:
-- Always confirm what you heard
-- If unsure say "Did you mean [closest item]?"
-- Accept: "kabab"=Kabob, "humus"=Hummus, "sultoni"=Sultani, "kubide"=Kubideh
-
-UPSELLING:
-- After taking main order suggest one add-on
-- "Would you like to add anything else? We have great appetizers and sides"
-
-IMPORTANT:
-- All meat is Halal
-- Vegetarian options available on request`;
-
-    const agentId = restaurant.retell_agent_id;
-    const apiKey = process.env.RETELL_API_KEY;
-
-    console.log(`🔄 Syncing menu to Retell agent: ${agentId}`);
-    console.log(`📋 Menu items: ${items.length}`);
-
-    // Step 1 — Update the prompt (creates new draft version)
-    const updateResponse = await fetch(
-      `https://api.retellai.com/update-agent/${agentId}`,
+    // Update the LLM (where prompt actually lives)
+    console.log(`🔄 Updating LLM: ${llmId}`);
+    const llmResponse = await fetch(
+      `https://api.retellai.com/update-retell-llm/${llmId}`,
       {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ general_prompt: prompt }),
       }
     );
 
-    if (!updateResponse.ok) {
-      const error = await updateResponse.text();
-      throw new Error(`Retell update failed: ${error}`);
+    if (!llmResponse.ok) {
+      const error = await llmResponse.text();
+      throw new Error(`LLM update failed: ${error}`);
     }
 
-    const updateData = await updateResponse.json();
-    console.log(`✅ Prompt updated - version: ${updateData.version}, published: ${updateData.is_published}`);
+    const llmData = await llmResponse.json();
+    console.log(`✅ LLM updated successfully!`);
+    console.log(`📋 LLM version: ${llmData.version}`);
 
-    // Step 2 — Publish the agent so changes go live
+    // Now publish the agent
     const publishResponse = await fetch(
-      `https://api.retellai.com/publish-agent/${agentId}`,
+      `https://api.retellai.com/publish-agent/${restaurant.retell_agent_id}`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
           "Content-Type": "application/json",
         },
       }
@@ -153,19 +147,20 @@ IMPORTANT:
     let published = false;
     if (publishResponse.ok) {
       published = true;
-      console.log(`✅ Agent published successfully!`);
+      console.log(`✅ Agent published!`);
     } else {
-      const publishError = await publishResponse.text();
-      console.log(`⚠️ Publish response: ${publishError}`);
+      const err = await publishResponse.text();
+      console.log(`⚠️ Publish error: ${err}`);
     }
 
     return NextResponse.json({
       success: true,
       items_synced: items.length,
+      llm_id: llmId,
       published,
       message: published
-        ? "Menu synced and Voice AI published successfully"
-        : "Menu synced but needs manual publish in Retell",
+        ? "✅ Menu synced and Voice AI published!"
+        : "✅ Menu synced — please publish manually in Retell",
     });
 
   } catch (error: any) {
