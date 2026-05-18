@@ -102,7 +102,7 @@ IMPORTANT NOTES:
           Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ general_prompt: prompt }),
+        body: JSON.stringify({ general_prompt: prompt, publish: true }),
       }
     );
 

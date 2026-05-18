@@ -36,7 +36,7 @@ export default function AdminPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const { data: rests } = await supabase.from("restaurants").select("*");
+    const { data: rests } = await supabase.from("restaurants").select("*").order("created_at", { ascending: false });
     const { data: orders } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
     setRestaurants(rests || []);
     setAllOrders(orders || []);
