@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     const agentId = restaurant.retell_agent_id;
 
-    // Get agent to find LLM ID
+    // Get LLM ID from agent
     const agentResponse = await fetch(
       `https://api.retellai.com/get-agent/${agentId}`,
       { headers: { Authorization: `Bearer ${apiKey}` } }
@@ -35,8 +35,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No LLM ID found" }, { status: 400 });
     }
 
-    console.log(`🤖 Agent: ${agentId}, LLM: ${llmId}`);
-
     // Get menu items
     const { data: items } = await supabaseAdmin
       .from("menu_items")
@@ -46,7 +44,7 @@ export async function POST(request: NextRequest) {
       .order("display_order");
 
     if (!items?.length) {
-      return NextResponse.json({ error: "No menu items found" }, { status: 400 });
+      return NextResponse.json({ error: "No menu items" }, { status: 400 });
     }
 
     const byCategory: Record<string, any[]> = {};
@@ -75,21 +73,19 @@ GREETING:
 Say: "Thank you for calling ${restaurant.name}! What can I get for you today?"
 
 TAKING ORDERS:
-- When customer orders an item confirm it WITHOUT saying the price
-- NEVER say the price of each item as you take it
+- Confirm items WITHOUT saying the price
+- NEVER say item price while taking order
 - Only say prices when customer specifically asks
 
 WHEN CUSTOMER ASKS ABOUT A CATEGORY:
 - List item NAMES only, NO prices
-- Example: Customer: "What sandwiches do you have?"
-  You: "We have Kubideh Kabob, Chicken, Vegetarian, Salmon Kabob, Lamb Kabob, and Beef Kabob sandwiches."
 
 WHEN CUSTOMER ASKS FOR A PRICE:
 - Then and only then tell the price
 
 CONFIRMING ORDER:
 - Confirm ALL items together ONCE with total
-- Say total price ONCE only
+- Say total ONCE only
 
 PAYMENT - SMS LINK ONLY:
 - Say: "I'll send you a secure payment link by text. What's your phone number?"
@@ -102,7 +98,7 @@ IDENTITY:
 CRITICAL:
 - Say each item ONCE only
 - Keep responses SHORT
-- Never repeat order summary more than once
+- Never repeat order summary
 
 CURRENT MENU:
 ${menuText}
@@ -111,22 +107,8 @@ Tax rate: ${(taxRate * 100).toFixed(1)}%
 Restaurant: ${restaurant.name}
 All meat is Halal.`;
 
-    // Step 1 — Unpublish agent first
-    console.log(`📤 Unpublishing agent...`);
-    const unpublishResponse = await fetch(
-      `https://api.retellai.com/unpublish-agent/${agentId}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    console.log(`Unpublish status: ${unpublishResponse.status}`);
-
-    // Step 2 — Update LLM prompt
-    console.log(`🔄 Updating LLM prompt...`);
+    // Update LLM only — no publish needed
+    // LLM changes take effect on next call automatically
     const llmResponse = await fetch(
       `https://api.retellai.com/update-retell-llm/${llmId}`,
       {
@@ -144,41 +126,15 @@ All meat is Halal.`;
       throw new Error(`LLM update failed: ${error}`);
     }
 
-    console.log(`✅ LLM updated`);
-
-    // Step 3 — Republish agent
-    console.log(`📢 Publishing agent...`);
-    const publishResponse = await fetch(
-      `https://api.retellai.com/publish-agent/${agentId}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const published = publishResponse.status === 200 || publishResponse.status === 204;
-    console.log(`Publish status: ${publishResponse.status}, published: ${published}`);
-
-    // Verify
-    const verifyResponse = await fetch(
-      `https://api.retellai.com/get-agent/${agentId}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    const verifyData = await verifyResponse.json();
-    const isPublished = verifyData?.is_published;
-    console.log(`✅ Agent is_published: ${isPublished}`);
+    const llmData = await llmResponse.json();
+    console.log(`✅ LLM updated - version: ${llmData.version}`);
 
     return NextResponse.json({
       success: true,
       items_synced: items.length,
       llm_id: llmId,
-      published: isPublished,
-      message: isPublished
-        ? "✅ Menu synced and Voice AI published!"
-        : "⚠️ Menu synced — please publish manually in Retell",
+      llm_version: llmData.version,
+      message: "✅ Menu synced to Voice AI!",
     });
 
   } catch (error: any) {
@@ -188,5 +144,5 @@ All meat is Halal.`;
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "Retell sync route active" });
+  return NextResponse.json({ status: "Retell sync active" });
 }
