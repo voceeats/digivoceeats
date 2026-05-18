@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 export async function POST(request: NextRequest) {
   try {
     const { restaurantId } = await request.json();
+    const apiKey = process.env.RETELL_API_KEY;
 
     const { data: restaurant } = await supabaseAdmin
       .from("restaurants")
@@ -15,25 +16,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No Retell agent found" }, { status: 400 });
     }
 
-    // First get the agent to find the LLM ID
+    const agentId = restaurant.retell_agent_id;
+
+    // Get agent to find LLM ID
     const agentResponse = await fetch(
-      `https://api.retellai.com/get-agent/${restaurant.retell_agent_id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-        },
-      }
+      `https://api.retellai.com/get-agent/${agentId}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
     );
+
+    if (!agentResponse.ok) {
+      throw new Error(`Failed to get agent: ${agentResponse.statusText}`);
+    }
 
     const agentData = await agentResponse.json();
     const llmId = agentData?.response_engine?.llm_id;
 
-    console.log(`🤖 Agent: ${restaurant.retell_agent_id}`);
-    console.log(`🧠 LLM ID: ${llmId}`);
-
     if (!llmId) {
       return NextResponse.json({ error: "No LLM ID found" }, { status: 400 });
     }
+
+    console.log(`🤖 Agent: ${agentId}, LLM: ${llmId}`);
 
     // Get menu items
     const { data: items } = await supabaseAdmin
@@ -109,14 +111,28 @@ Tax rate: ${(taxRate * 100).toFixed(1)}%
 Restaurant: ${restaurant.name}
 All meat is Halal.`;
 
-    // Update the LLM (where prompt actually lives)
-    console.log(`🔄 Updating LLM: ${llmId}`);
+    // Step 1 — Unpublish agent first
+    console.log(`📤 Unpublishing agent...`);
+    const unpublishResponse = await fetch(
+      `https://api.retellai.com/unpublish-agent/${agentId}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    console.log(`Unpublish status: ${unpublishResponse.status}`);
+
+    // Step 2 — Update LLM prompt
+    console.log(`🔄 Updating LLM prompt...`);
     const llmResponse = await fetch(
       `https://api.retellai.com/update-retell-llm/${llmId}`,
       {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ general_prompt: prompt }),
@@ -128,39 +144,41 @@ All meat is Halal.`;
       throw new Error(`LLM update failed: ${error}`);
     }
 
-    const llmData = await llmResponse.json();
-    console.log(`✅ LLM updated successfully!`);
-    console.log(`📋 LLM version: ${llmData.version}`);
+    console.log(`✅ LLM updated`);
 
-    // Now publish the agent
+    // Step 3 — Republish agent
+    console.log(`📢 Publishing agent...`);
     const publishResponse = await fetch(
-      `https://api.retellai.com/publish-agent/${restaurant.retell_agent_id}`,
+      `https://api.retellai.com/publish-agent/${agentId}`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
       }
     );
 
-    let published = false;
-    if (publishResponse.ok) {
-      published = true;
-      console.log(`✅ Agent published!`);
-    } else {
-      const err = await publishResponse.text();
-      console.log(`⚠️ Publish error: ${err}`);
-    }
+    const published = publishResponse.status === 200 || publishResponse.status === 204;
+    console.log(`Publish status: ${publishResponse.status}, published: ${published}`);
+
+    // Verify
+    const verifyResponse = await fetch(
+      `https://api.retellai.com/get-agent/${agentId}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    const verifyData = await verifyResponse.json();
+    const isPublished = verifyData?.is_published;
+    console.log(`✅ Agent is_published: ${isPublished}`);
 
     return NextResponse.json({
       success: true,
       items_synced: items.length,
       llm_id: llmId,
-      published,
-      message: published
+      published: isPublished,
+      message: isPublished
         ? "✅ Menu synced and Voice AI published!"
-        : "✅ Menu synced — please publish manually in Retell",
+        : "⚠️ Menu synced — please publish manually in Retell",
     });
 
   } catch (error: any) {
