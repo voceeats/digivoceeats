@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
-import { detectAndPrint, type PrintOrder } from "@/lib/print";
+import { detectAndPrint, browserPrint, type PrintOrder } from "@/lib/print";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,6 +78,33 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
       }
     } catch (e) { console.error(e); }
     setLoading(null);
+  };
+
+  const handlePrint = () => {
+    const po: PrintOrder = {
+      order_number: order.order_number || "",
+      customer_name: order.customer_name,
+      customer_phone: order.customer_phone,
+      items: Array.isArray(order.items)
+        ? order.items.map((i: any) => ({
+            name: i.name || "Item",
+            qty: Number(i.qty) || 1,
+            price: Number(i.price) || 0,
+          }))
+        : [],
+      subtotal: Number(order.subtotal) || 0,
+      tax: Number(order.tax) || 0,
+      total: Number(order.total) || 0,
+      platform_fee: Number(order.platform_fee) || 0,
+      restaurant_payout: Number(order.restaurant_payout) || 0,
+      payment_method: order.payment_method,
+      notes: order.notes,
+      restaurant_name: "Bread & Kabob",
+      restaurant_address: "3407 Payne St, Falls Church, VA",
+      restaurant_phone: "(703) 845-2900",
+      created_at: order.created_at || new Date().toISOString(),
+    };
+    browserPrint(po);
   };
 
   return (
@@ -196,7 +223,7 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
               </button>
             )}
             <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>💳 Send Payment Link</button>
-            <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>🖨️ Print</button>
+            <button type="button" onClick={() => handlePrint()} style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>🖨️ Print</button>
           </div>
         </div>
       )}
