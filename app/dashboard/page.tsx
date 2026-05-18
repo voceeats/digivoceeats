@@ -536,9 +536,149 @@ function HoursTab({ restaurantId }: { restaurantId: string }) {
   );
 }
 
+function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: any) => void }) {
+  const pctFromTax = () => {
+    const tr = restaurant.tax_rate ?? 0.06;
+    const n = typeof tr === "number" ? tr : parseFloat(String(tr));
+    return (Number.isFinite(n) ? n : 0.06) * 100;
+  };
+  const [name, setName] = useState(restaurant.name || "");
+  const [address, setAddress] = useState(restaurant.address || "");
+  const [phone, setPhone] = useState(restaurant.phone || "");
+  const [email, setEmail] = useState(restaurant.email || "");
+  const [taxRate, setTaxRate] = useState(pctFromTax);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setName(restaurant.name || "");
+    setAddress(restaurant.address || "");
+    setPhone(restaurant.phone || "");
+    setEmail(restaurant.email || "");
+    setTaxRate(pctFromTax());
+  }, [
+    restaurant.id,
+    restaurant.name,
+    restaurant.address,
+    restaurant.phone,
+    restaurant.email,
+    restaurant.tax_rate,
+  ]);
+
+  const saveSettings = async () => {
+    setSaving(true);
+    const updates = {
+      name,
+      address,
+      phone,
+      email,
+      tax_rate: taxRate / 100,
+    };
+    const { data, error } = await supabase
+      .from("restaurants")
+      .update(updates)
+      .eq("id", restaurant.id)
+      .select()
+      .single();
+    if (!error && data) {
+      onUpdate(data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    }
+    setSaving(false);
+  };
+
+  const inp = {
+    width: "100%",
+    background: "rgba(0,0,0,0.3)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: "12px 16px",
+    color: "#F9FAFB",
+    fontSize: 14,
+    outline: "none",
+    fontFamily: "inherit",
+    boxSizing: "border-box" as const,
+  } satisfies React.CSSProperties;
+
+  const lbl = {
+    display: "block",
+    color: "#9CA3AF",
+    fontSize: 12,
+    fontWeight: 700,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  } satisfies React.CSSProperties;
+
+  return (
+    <div>
+      {saved && (
+        <div style={{ padding: "12px 20px", background: "rgba(0,200,150,0.1)", border: "1px solid rgba(0,200,150,0.3)", borderRadius: 12, marginBottom: 20, color: "#00C896", fontWeight: 600 }}>
+          ✅ Settings saved successfully!
+        </div>
+      )}
+
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 28, marginBottom: 20 }}>
+        <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16, marginBottom: 24 }}>🏪 Restaurant Information</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div>
+            <label style={lbl}>Restaurant Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Restaurant name" />
+          </div>
+          <div>
+            <label style={lbl}>Phone Number</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} style={inp} placeholder="(703) 000-0000" />
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={lbl}>Address</label>
+            <input value={address} onChange={e => setAddress(e.target.value)} style={inp} placeholder="Street, City, State ZIP" />
+          </div>
+          <div>
+            <label style={lbl}>Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} style={inp} placeholder="owner@restaurant.com" type="email" />
+          </div>
+          <div>
+            <label style={lbl}>Tax Rate (%)</label>
+            <input
+              value={taxRate}
+              onChange={e => setTaxRate(Number.isFinite(parseFloat(e.target.value)) ? parseFloat(e.target.value) : 0)}
+              style={inp}
+              type="number"
+              step="0.1"
+              min="0"
+              max="20"
+            />
+            <div style={{ color: "#4B5563", fontSize: 11, marginTop: 6 }}>Northern Virginia: 6%</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 28, marginBottom: 24 }}>
+        <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16, marginBottom: 16 }}>📞 Voice AI Phone Number</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.2)", borderRadius: 12 }}>
+          <span style={{ fontSize: 28 }}>🎙️</span>
+          <div>
+            <div style={{ color: "#F9FAFB", fontWeight: 700, fontSize: 18 }}>(703) 686-5337</div>
+            <div style={{ color: "#6B7280", fontSize: 13 }}>Customers call this number to place voice orders</div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={saveSettings}
+        disabled={saving}
+        style={{ width: "100%", background: saving ? "#374151" : "linear-gradient(135deg,#FF6B35,#FF8C5A)", color: "#fff", border: "none", borderRadius: 12, padding: "14px", fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+      >
+        {saving ? "Saving..." : "Save Settings →"}
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const router = useRouter();
-  const [tab, setTab] = useState<"orders" | "menu" | "analytics" | "hours">("orders");
+  const [tab, setTab] = useState<"orders" | "menu" | "analytics" | "hours" | "settings">("orders");
   const [filter, setFilter] = useState("all");
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -549,6 +689,25 @@ export default function Dashboard() {
   useEffect(() => {
     initDashboard();
   }, []);
+
+  // Auto open/close based on hours - check every minute
+  useEffect(() => {
+    if (!restaurant) return;
+    const checkHours = async () => {
+      try {
+        const r = await fetch(`/api/restaurant/hours?restaurantId=${restaurant.id}`);
+        const data = await r.json();
+        if (typeof data.is_open === "boolean" && data.is_open !== isOpen) {
+          setIsOpen(data.is_open);
+          await supabase.from("restaurants").update({ is_open: data.is_open }).eq("id", restaurant.id);
+          console.log(`Auto ${data.is_open ? "opened" : "closed"} restaurant`);
+        }
+      } catch (e) { console.error("Hours check failed:", e); }
+    };
+    checkHours();
+    const interval = setInterval(checkHours, 60000);
+    return () => clearInterval(interval);
+  }, [restaurant, isOpen]);
 
   const initDashboard = async () => {
     // Check auth
@@ -671,7 +830,8 @@ export default function Dashboard() {
     { id: "orders", label: "Orders", icon: "📋", count: pending },
     { id: "menu", label: "Menu", icon: "🍽️" },
     { id: "analytics", label: "Analytics", icon: "📊" },
-    { id: "hours", label: "Hours", icon: "⏰" }
+    { id: "hours", label: "Hours", icon: "⏰" },
+    { id: "settings", label: "Settings", icon: "⚙️" },
   ];
 
   const statCards = [
@@ -817,6 +977,10 @@ export default function Dashboard() {
 
         {tab === "hours" && restaurant && (
           <HoursTab restaurantId={restaurant.id} />
+        )}
+
+        {tab === "settings" && restaurant && (
+          <SettingsTab restaurant={restaurant} onUpdate={(updated: any) => setRestaurant(updated)} />
         )}
 
         {/* Analytics Tab */}
