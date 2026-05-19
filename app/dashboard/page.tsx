@@ -289,6 +289,16 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
   const [editPrice, setEditPrice] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState({
+    name: "",
+    description: "",
+    categoryId: "",
+    price: "",
+  });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     loadMenu();
@@ -353,6 +363,96 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
     } catch (e) { console.error(e); }
   };
 
+  const addBasePrice = parseFloat(addForm.price);
+  const addVoiceeatsPrice = Number.isFinite(addBasePrice) && addBasePrice > 0
+    ? parseFloat((addBasePrice * (1 + PLATFORM_FEE)).toFixed(2))
+    : 0;
+
+  const openAddModal = () => {
+    setAddForm({
+      name: "",
+      description: "",
+      categoryId: categories[0]?.id || "",
+      price: "",
+    });
+    setShowAddModal(true);
+  };
+
+  const addItem = async () => {
+    const price = parseFloat(addForm.price);
+    if (!addForm.name.trim() || !addForm.categoryId || isNaN(price) || price <= 0) return;
+    setAdding(true);
+    try {
+      const r = await fetch("/api/menu/create-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantId,
+          name: addForm.name.trim(),
+          description: addForm.description.trim() || undefined,
+          categoryId: addForm.categoryId,
+          price,
+        }),
+      });
+      const data = await r.json();
+      if (data.success && data.item) {
+        setItems(prev => [...prev, data.item]);
+        setShowAddModal(false);
+        setSyncMsg("✅ Item added and Voice AI synced!");
+        setTimeout(() => setSyncMsg(""), 3000);
+      } else {
+        setSyncMsg(`❌ ${data.error || "Failed to add item"}`);
+        setTimeout(() => setSyncMsg(""), 4000);
+      }
+    } catch (e) { console.error(e); }
+    setAdding(false);
+  };
+
+  const deleteItem = async (itemId: string) => {
+    setDeletingId(itemId);
+    try {
+      const r = await fetch("/api/menu/delete-item", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, restaurantId }),
+      });
+      const data = await r.json();
+      if (data.success) {
+        setItems(prev => prev.filter(item => item.id !== itemId));
+        setSyncMsg("✅ Item deleted and Voice AI synced!");
+        setTimeout(() => setSyncMsg(""), 3000);
+      } else {
+        setSyncMsg(`❌ ${data.error || "Failed to delete item"}`);
+        setTimeout(() => setSyncMsg(""), 4000);
+      }
+    } catch (e) { console.error(e); }
+    setDeleteConfirmId(null);
+    setDeletingId(null);
+  };
+
+  const modalInp = {
+    width: "100%",
+    background: "rgba(0,0,0,0.4)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: "12px 14px",
+    color: "#F9FAFB",
+    fontSize: 14,
+    outline: "none",
+    fontFamily: "inherit",
+    boxSizing: "border-box" as const,
+  };
+
+  const modalLbl = {
+    display: "block",
+    color: "#9CA3AF",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  };
+
   if (loading) return (
     <div style={{ textAlign: "center", padding: 60, color: "#6B7280" }}>Loading menu...</div>
   );
@@ -365,11 +465,20 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
         </div>
       )}
 
-      <div style={{ padding: "16px 20px", background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.2)", borderRadius: 12, marginBottom: 24 }}>
-        <div style={{ color: "#FF6B35", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>💡 How Pricing Works</div>
-        <div style={{ color: "#9CA3AF", fontSize: 12 }}>
-          You set your base price → DigiVoceEats adds 15% → Customer pays the total. You always receive your full base price.
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ padding: "16px 20px", background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.2)", borderRadius: 12, flex: 1 }}>
+          <div style={{ color: "#FF6B35", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>💡 How Pricing Works</div>
+          <div style={{ color: "#9CA3AF", fontSize: 12 }}>
+            You set your base price → DigiVoceEats adds 15% → Customer pays the total. You always receive your full base price.
+          </div>
         </div>
+        <button
+          onClick={openAddModal}
+          disabled={categories.length === 0}
+          style={{ ...S.btn("#FF6B35"), padding: "14px 22px", fontSize: 14, whiteSpace: "nowrap" }}
+        >
+          + Add New Item
+        </button>
       </div>
 
       {categories.map(cat => {
@@ -469,6 +578,12 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
                         >
                           ✏️ Edit
                         </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(item.id)}
+                          style={{ ...S.btn("#EF4444", true), fontSize: 12, padding: "8px 14px" }}
+                        >
+                          🗑️ Delete
+                        </button>
                       </div>
                     )}
                   </div>
@@ -509,7 +624,150 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
         <div style={{ ...S.card, padding: 60, textAlign: "center" }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
           <div style={{ color: "#F9FAFB", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No menu items yet</div>
-          <div style={{ color: "#6B7280", fontSize: 14 }}>Contact Diginetplore to set up your menu</div>
+          <div style={{ color: "#6B7280", fontSize: 14, marginBottom: 20 }}>Add your first item to get started</div>
+          {categories.length > 0 && (
+            <button onClick={openAddModal} style={{ ...S.btn("#FF6B35"), padding: "12px 24px" }}>
+              + Add New Item
+            </button>
+          )}
+        </div>
+      )}
+
+      {showAddModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+            padding: 24,
+          }}
+          onClick={() => !adding && setShowAddModal(false)}
+        >
+          <div
+            style={{ ...S.card, padding: 28, width: "100%", maxWidth: 480, background: "#12121a" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 20 }}>Add New Menu Item</h3>
+            <div style={{ marginBottom: 16 }}>
+              <label style={modalLbl}>Item Name *</label>
+              <input
+                value={addForm.name}
+                onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+                style={modalInp}
+                placeholder="e.g. Chicken Kabob Platter"
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={modalLbl}>Description (optional)</label>
+              <input
+                value={addForm.description}
+                onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
+                style={modalInp}
+                placeholder="Short description for the menu"
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={modalLbl}>Category *</label>
+              <select
+                value={addForm.categoryId}
+                onChange={e => setAddForm(f => ({ ...f, categoryId: e.target.value }))}
+                style={{ ...modalInp, cursor: "pointer" }}
+              >
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={modalLbl}>Base Price (your price) *</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ color: "#6B7280" }}>$</span>
+                <input
+                  type="number"
+                  value={addForm.price}
+                  onChange={e => setAddForm(f => ({ ...f, price: e.target.value }))}
+                  step="0.01"
+                  min="0"
+                  style={modalInp}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div style={{ marginBottom: 24, padding: "12px 16px", background: "rgba(255,107,53,0.08)", borderRadius: 10, border: "1px solid rgba(255,107,53,0.2)" }}>
+              <div style={{ color: "#9CA3AF", fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>VoceEats Price (auto)</div>
+              <div style={{ color: "#FF6B35", fontWeight: 800, fontSize: 20 }}>
+                ${addVoiceeatsPrice.toFixed(2)}
+              </div>
+              <div style={{ color: "#6B7280", fontSize: 11, marginTop: 4 }}>Base price × 1.15 (15% platform fee included)</div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={addItem}
+                disabled={adding || !addForm.name.trim() || !addForm.categoryId}
+                style={{ ...S.btn("#00C896"), flex: 1, opacity: adding ? 0.7 : 1 }}
+              >
+                {adding ? "Adding..." : "Add Item"}
+              </button>
+              <button
+                onClick={() => setShowAddModal(false)}
+                disabled={adding}
+                style={{ ...S.btn("#EF4444", true), flex: 1 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmId && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+            padding: 24,
+          }}
+          onClick={() => !deletingId && setDeleteConfirmId(null)}
+        >
+          <div
+            style={{ ...S.card, padding: 28, width: "100%", maxWidth: 400, background: "#12121a" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 12 }}>Delete Menu Item?</h3>
+            <p style={{ color: "#9CA3AF", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+              This will permanently remove{" "}
+              <strong style={{ color: "#F9FAFB" }}>
+                {items.find(i => i.id === deleteConfirmId)?.name || "this item"}
+              </strong>{" "}
+              from your menu and sync changes to Voice AI.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => deleteItem(deleteConfirmId)}
+                disabled={!!deletingId}
+                style={{ ...S.btn("#EF4444"), flex: 1, opacity: deletingId ? 0.7 : 1 }}
+              >
+                {deletingId ? "Deleting..." : "Yes, Delete"}
+              </button>
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={!!deletingId}
+                style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", flex: 1 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -989,6 +1247,10 @@ export default function Dashboard() {
     setAlertingOrderIds((prev) => prev.filter((id) => id !== orderId));
   }, []);
 
+  const silenceAlerts = useCallback(() => {
+    setAlertingOrderIds([]);
+  }, []);
+
   useEffect(() => {
     if (alertingOrderIds.length === 0) {
       if (titleFlashRef.current) {
@@ -1077,7 +1339,10 @@ export default function Dashboard() {
         },
         (payload) => {
           const row = payload.new as Record<string, unknown>;
-          setOrders((prev) => [row as any, ...prev]);
+          setOrders((prev) => {
+            if (prev.some((o) => o.id === row.id)) return prev;
+            return [row as any, ...prev];
+          });
           if (row.status === "pending") {
             addOrderAlert(String(row.id), String(row.order_number ?? row.id));
           }
@@ -1288,6 +1553,43 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+
+      {pending > 0 && (
+        <div
+          role="alert"
+          style={{
+            background: "linear-gradient(90deg, rgba(255,107,53,0.18), rgba(255,107,53,0.08))",
+            borderBottom: "1px solid rgba(255,107,53,0.35)",
+            padding: "14px 28px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 22, animation: alertingOrderIds.length > 0 ? "pulse 1.5s infinite" : "none" }}>🔔</span>
+            <div>
+              <div style={{ color: "#FF6B35", fontWeight: 800, fontSize: 15 }}>
+                New Orders Pending — {pending} {pending === 1 ? "order needs" : "orders need"} attention
+              </div>
+              <div style={{ color: "#9CA3AF", fontSize: 12, marginTop: 2 }}>
+                Accept or reject orders below. Use Silence Alerts to stop the sound without dismissing orders.
+              </div>
+            </div>
+          </div>
+          {alertingOrderIds.length > 0 && (
+            <button
+              type="button"
+              onClick={silenceAlerts}
+              style={{ ...S.btn("#374151"), padding: "10px 20px", fontSize: 13, border: "1px solid rgba(255,255,255,0.15)" }}
+            >
+              🔕 Silence Alerts
+            </button>
+          )}
+        </div>
+      )}
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
         {/* Stat Cards */}

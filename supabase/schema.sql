@@ -149,6 +149,9 @@ create table public.orders (
   payment_link_expires_at timestamptz
 );
 
+create unique index if not exists orders_retell_call_id_unique
+  on public.orders(retell_call_id) where retell_call_id is not null;
+
 -- PRINTERS
 create table public.printers (
   id uuid primary key default gen_random_uuid(),

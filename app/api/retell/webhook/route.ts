@@ -158,6 +158,25 @@ Reply STOP to opt out.`,
   }
 }
 
+async function findOrderByRetellCallId(callId: string) {
+  const { data } = await supabaseAdmin
+    .from("orders")
+    .select("id, order_number")
+    .eq("retell_call_id", callId)
+    .maybeSingle();
+  return data;
+}
+
+function duplicateOrderResponse(existing: { id: string; order_number: string }, callId?: string) {
+  console.log("⏭️ Order already exists for call:", callId ?? existing.id);
+  return NextResponse.json({
+    received: true,
+    duplicate: true,
+    order_id: existing.id,
+    order_number: existing.order_number,
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -165,8 +184,6 @@ export async function POST(request: NextRequest) {
     console.log("📞 Retell webhook received:", eventType);
     console.log("📦 Full body:", JSON.stringify(body).slice(0, 1000));
 
-    // Process BOTH call_ended and call_analyzed
-    // call_analyzed has the custom data with order details
     if (eventType !== "call_ended" && eventType !== "call_analyzed") {
       return NextResponse.json({ received: true, event: eventType });
     }
@@ -174,18 +191,18 @@ export async function POST(request: NextRequest) {
     const callData = body.call || body;
     const callId = callData.call_id || body.call_id;
 
-    // Check if we already processed this call
+    // Idempotency: Retell fires both call_ended and call_analyzed for the same call.
+    // Only create orders on call_analyzed (has extracted order data).
     if (callId) {
-      const { data: existing } = await supabaseAdmin
-        .from("orders")
-        .select("id")
-        .eq("retell_call_id", callId)
-        .single();
-
+      const existing = await findOrderByRetellCallId(callId);
       if (existing) {
-        console.log("⏭️ Order already exists for call:", callId);
-        return NextResponse.json({ received: true, duplicate: true });
+        return duplicateOrderResponse(existing, callId);
       }
+    }
+
+    if (eventType === "call_ended") {
+      console.log("⏭️ call_ended received — waiting for call_analyzed:", callId);
+      return NextResponse.json({ received: true, skipped: "awaiting call_analyzed" });
     }
 
     // Get custom data — this is where Retell puts extracted info
@@ -287,6 +304,14 @@ export async function POST(request: NextRequest) {
 
     console.log("💾 Saving order:", JSON.stringify(orderData, null, 2));
 
+    // Re-check immediately before insert (guards against race between webhooks)
+    if (callId) {
+      const existing = await findOrderByRetellCallId(callId);
+      if (existing) {
+        return duplicateOrderResponse(existing, callId);
+      }
+    }
+
     const { data: order, error } = await supabaseAdmin
       .from("orders")
       .insert(orderData)
@@ -294,6 +319,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      // Unique index on retell_call_id — treat as duplicate, not failure
+      if (error.code === "23505" && callId) {
+        const existing = await findOrderByRetellCallId(callId);
+        if (existing) {
+          return duplicateOrderResponse(existing, callId);
+        }
+      }
       console.error("❌ Order save error:", error);
       return NextResponse.json({ received: true, error: error.message });
     }
