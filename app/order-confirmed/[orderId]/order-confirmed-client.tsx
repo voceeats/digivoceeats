@@ -87,7 +87,7 @@ export default function OrderConfirmedClient({ orderId }: { orderId: string }) {
         </p>
 
         <div style={{ marginTop: 32, color: "#4B5563", fontSize: 12 }}>
-          Powered by <span style={{ color: "#FF6B35", fontWeight: 700 }}>VoceEats</span> by Diginetplore
+          Powered by <span style={{ color: "#FF6B35", fontWeight: 700 }}>DigiVoceEats</span> by Diginetplore
         </div>
       </div>
     </div>

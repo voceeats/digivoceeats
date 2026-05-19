@@ -3,7 +3,7 @@ import Stripe from "stripe";
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2026-04-22.dahlia",
   appInfo: {
-    name: "VoceEats by Diginetplore",
+    name: "DigiVoceEats by Diginetplore",
     version: "1.0.0",
     url: "https://www.digivoceeats.com",
   },
@@ -102,7 +102,7 @@ export async function createPaymentIntent(
       platform: "voceeats",
     },
     automatic_payment_methods: { enabled: true },
-    description: `VoceEats Order ${orderNumber} at ${restaurantName}`,
+    description: `DigiVoceEats Order ${orderNumber} at ${restaurantName}`,
   });
 
   return paymentIntent;

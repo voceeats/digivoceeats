@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 import { SignupForm } from "./signup-form";
 
 export default function LandingPage() {
@@ -34,21 +35,9 @@ export default function LandingPage() {
           backdropFilter: "blur(10px)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 28 }}>🎙️</span>
-          <span
-            style={{
-              fontWeight: 900,
-              fontSize: 24,
-              background: "linear-gradient(135deg,#FF6B35,#FF9A6C)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Voce
-          </span>
-          <span style={{ fontWeight: 900, fontSize: 24 }}>Eats</span>
-        </div>
+        <Link href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+          <BrandLogo priority variant="default" />
+        </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link
             href="/login"
@@ -129,7 +118,7 @@ export default function LandingPage() {
             margin: "0 auto 40px",
           }}
         >
-          VoceEats AI answers your restaurant&apos;s phone, takes orders naturally, sends payment links by text,
+          DigiVoceEats AI answers your restaurant&apos;s phone, takes orders naturally, sends payment links by text,
           and notifies you instantly. No staff needed. No missed calls. Ever.
         </p>
 
@@ -214,7 +203,7 @@ export default function LandingPage() {
                 step: "01",
                 icon: "📞",
                 title: "Customer Calls",
-                desc: "Customer calls your restaurant's dedicated VoceEats number. AI answers instantly — no hold music, no missed calls.",
+                desc: "Customer calls your restaurant's dedicated DigiVoceEats number. AI answers instantly — no hold music, no missed calls.",
                 color: "#FF6B35",
               },
               {
@@ -265,7 +254,7 @@ export default function LandingPage() {
       <section style={{ padding: "80px 40px" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <h2 style={{ fontSize: 40, fontWeight: 900, textAlign: "center", marginBottom: 16 }}>
-            Why Restaurants Love VoceEats
+            Why Restaurants Love DigiVoceEats
           </h2>
           <p style={{ color: "#6B7280", textAlign: "center", fontSize: 16, marginBottom: 60 }}>
             Built for busy restaurant owners
@@ -435,21 +424,9 @@ export default function LandingPage() {
           gap: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 20 }}>🎙️</span>
-          <span
-            style={{
-              fontWeight: 900,
-              fontSize: 16,
-              background: "linear-gradient(135deg,#FF6B35,#FF9A6C)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            Voce
-          </span>
-          <span style={{ fontWeight: 900, fontSize: 16 }}>Eats</span>
-          <span style={{ color: "#4B5563", fontSize: 13, marginLeft: 8 }}>by Diginetplore</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <BrandLogo variant="default" />
+          <span style={{ color: "#4B5563", fontSize: 13 }}>by Diginetplore</span>
         </div>
         <div style={{ display: "flex", gap: 24 }}>
           <Link href="/privacy-policy" style={{ color: "#6B7280", textDecoration: "none", fontSize: 13 }}>

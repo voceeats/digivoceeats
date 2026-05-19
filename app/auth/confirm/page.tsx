@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,10 +53,8 @@ export default function ConfirmPage() {
     }}>
       <div style={{ width: "100%", maxWidth: 420, padding: "0 24px" }}>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎙️</div>
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <span style={{ fontWeight: 900, fontSize: 32, background: "linear-gradient(135deg,#FF6B35,#FF9A6C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Voce</span>
-            <span style={{ fontWeight: 900, fontSize: 32, color: "#F9FAFB" }}>Eats</span>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+            <BrandLogo priority />
           </div>
           <p style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>Set your password to get started</p>
         </div>

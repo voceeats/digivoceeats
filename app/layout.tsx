@@ -17,22 +17,25 @@ const dmMono = DM_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "VoceEats — Restaurant Voice AI Ordering",
-    template: "%s | VoceEats",
+    default: "DigiVoceEats",
+    template: "%s | DigiVoceEats",
   },
-  description:
-    "AI-powered voice ordering system for restaurants. Customers call, AI takes orders, payments split automatically.",
+  description: "AI voice ordering for restaurants",
   keywords: ["restaurant", "voice AI", "ordering", "POS", "food ordering"],
-  authors: [{ name: "Diginetplore", url: "https://voiceeats.com" }],
+  authors: [{ name: "Diginetplore", url: "https://www.digivoceeats.com" }],
   creator: "Diginetplore",
-  metadataBase: new URL("https://voiceeats.com"),
+  metadataBase: new URL("https://www.digivoceeats.com"),
+  icons: {
+    icon: "/digivoceeats_logo.png",
+    apple: "/digivoceeats_logo.png",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://voiceeats.com",
-    title: "VoceEats — Restaurant Voice AI",
-    description: "AI takes your restaurant orders by phone. Automatically.",
-    siteName: "VoceEats",
+    url: "https://www.digivoceeats.com",
+    title: "DigiVoceEats",
+    description: "AI voice ordering for restaurants",
+    siteName: "DigiVoceEats",
   },
 };
 

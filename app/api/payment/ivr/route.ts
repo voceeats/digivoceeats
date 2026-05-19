@@ -53,7 +53,7 @@ function startIVR(twiml: any, orderId: string) {
   });
   gather.say(
     { voice: "Polly.Joanna", language: "en-US" },
-    "Welcome to VoceEats secure payment. " +
+    "Welcome to DigiVoceEats secure payment. " +
     "Please enter your 16 digit card number now."
   );
   twiml.say({ voice: "Polly.Joanna" }, "We did not receive your card number. Please call back.");

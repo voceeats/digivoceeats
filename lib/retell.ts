@@ -140,7 +140,7 @@ export async function createRetellAgent(restaurantId: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      agent_name: `${restaurant.name} - VoceEats`,
+      agent_name: `${restaurant.name} - DigiVoceEats`,
       general_prompt: buildMenuPrompt(restaurant.name, restaurant.phone || "", []),
       voice_id: "11labs-Adrian",
       language: "en-US",

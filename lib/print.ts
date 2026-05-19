@@ -71,7 +71,7 @@ function formatReceipt(order: PrintOrder): string {
   }
 
   receipt += line + "\n";
-  receipt += center("Powered by VoceEats") + "\n";
+  receipt += center("Powered by DigiVoceEats") + "\n";
   receipt += center("digivoceeats.com") + "\n";
   receipt += "\n\n\n";
 
@@ -157,7 +157,7 @@ function generateReceiptHTML(order: PrintOrder): string {
         <div>${order.notes}</div>
       ` : ""}
       <div class="line"></div>
-      <div class="center">Powered by VoceEats</div>
+      <div class="center">Powered by DigiVoceEats</div>
       <div class="center">digivoceeats.com</div>
     </body>
     </html>

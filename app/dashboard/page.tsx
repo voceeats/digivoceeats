@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 import { detectAndPrint, browserPrint, type PrintOrder } from "@/lib/print";
 
 const supabase = createClient(
@@ -243,7 +244,7 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
             {[
               ["Subtotal", `$${(order.subtotal || 0).toFixed(2)}`, "#F9FAFB"],
               ["Tax (6%)", `$${(order.tax || 0).toFixed(2)}`, "#9CA3AF"],
-              ["VoceEats (15%)", `-$${(order.platform_fee || 0).toFixed(2)}`, "#FF6B35"],
+              ["DigiVoceEats (15%)", `-$${(order.platform_fee || 0).toFixed(2)}`, "#FF6B35"],
               ["Your Payout", `$${(order.restaurant_payout || 0).toFixed(2)}`, "#00C896"],
             ].map(([label, val, color]: any) => (
               <div key={label}>
@@ -367,7 +368,7 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
       <div style={{ padding: "16px 20px", background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.2)", borderRadius: 12, marginBottom: 24 }}>
         <div style={{ color: "#FF6B35", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>💡 How Pricing Works</div>
         <div style={{ color: "#9CA3AF", fontSize: 12 }}>
-          You set your base price → VoceEats adds 15% → Customer pays the total. You always receive your full base price.
+          You set your base price → DigiVoceEats adds 15% → Customer pays the total. You always receive your full base price.
         </div>
       </div>
 
@@ -457,7 +458,7 @@ function MenuTab({ restaurantId }: { restaurantId: string }) {
                         </div>
                         <div style={{ width: 1, height: 32, background: "rgba(255,255,255,0.1)" }} />
                         <div>
-                          <div style={{ color: "#6B7280", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>VoceEats Fee</div>
+                          <div style={{ color: "#6B7280", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>DigiVoceEats Fee</div>
                           <div style={{ color: "#6B7280", fontWeight: 700, fontSize: 14 }}>
                             ${((item.voiceeats_price || item.price * 1.15) - item.price).toFixed(2)}
                           </div>
@@ -945,7 +946,7 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const baseTitleRef = useRef("VoceEats");
+  const baseTitleRef = useRef("DigiVoceEats");
   const bellRepeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const titleFlashRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const titleFlashOnRef = useRef(false);
@@ -954,7 +955,7 @@ export default function Dashboard() {
   const [orderToasts, setOrderToasts] = useState<{ key: string; orderNumber: string }[]>([]);
 
   useEffect(() => {
-    baseTitleRef.current = typeof document !== "undefined" && document.title ? document.title : "VoceEats";
+    baseTitleRef.current = typeof document !== "undefined" && document.title ? document.title : "DigiVoceEats";
   }, []);
 
   const ensureAudioCtx = useCallback(async () => {
@@ -1257,20 +1258,13 @@ export default function Dashboard() {
         zIndex: 100,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: 26 }}>🎙️</span>
-          <div style={{ display: "flex" }}>
-            <span style={{ fontWeight: 900, fontSize: 20, background: "linear-gradient(135deg,#FF6B35,#FF9A6C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Voce</span>
-            <span style={{ fontWeight: 900, fontSize: 20 }}>Eats</span>
-          </div>
+          <BrandLogo />
           <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
           <div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>{restaurant?.name || "Loading..."}</div>
             <div style={{ color: "#6B7280", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#00C896", display: "inline-block", animation: "pulse 2s infinite" }} />
-              <div style={{ color: "#6B7280", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#00C896", display: "inline-block", animation: "pulse 2s infinite" }} />
-                Live · {restaurant?.address || "3407 Payne St, Falls Church, VA"} · Powered by Diginetplore
-              </div>
+              Live · {restaurant?.address || "3407 Payne St, Falls Church, VA"} · Powered by Diginetplore
             </div>
           </div>
         </div>
@@ -1386,7 +1380,7 @@ export default function Dashboard() {
                 rows: [
                   ["Gross Revenue", `$${orders.reduce((s, o) => s + (o.total || 0), 0).toFixed(2)}`, "#F9FAFB"],
                   ["Your Earnings (85%)", `$${orders.reduce((s, o) => s + (o.restaurant_payout || 0), 0).toFixed(2)}`, "#00C896"],
-                  ["VoceEats Fee (15%)", `$${orders.reduce((s, o) => s + (o.platform_fee || 0), 0).toFixed(2)}`, "#FF6B35"],
+                  ["DigiVoceEats Fee (15%)", `$${orders.reduce((s, o) => s + (o.platform_fee || 0), 0).toFixed(2)}`, "#FF6B35"],
                   ["Tax Collected", `$${orders.reduce((s, o) => s + (o.tax || 0), 0).toFixed(2)}`, "#9CA3AF"],
                 ],
               },

@@ -144,7 +144,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 Order: ${order.order_number}
 Total paid: $${totalNum.toFixed(2)}
 
-Your food will be ready in approximately 25 minutes. Thank you for using VoceEats!
+Your food will be ready in approximately 25 minutes. Thank you for using DigiVoceEats!
 
 Reply STOP to opt out.`,
       });

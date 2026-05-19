@@ -8,7 +8,7 @@ export function SignupForm() {
         const form = e.target as HTMLFormElement;
         const data = new FormData(form);
         alert(
-          `Thanks! We'll contact you at ${data.get("email")} within 24 hours to set up your VoceEats account.`,
+          `Thanks! We'll contact you at ${data.get("email")} within 24 hours to set up your DigiVoceEats account.`,
         );
         form.reset();
       }}

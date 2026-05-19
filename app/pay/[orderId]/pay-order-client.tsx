@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 
 type OrderRow = {
   id: string;
@@ -329,7 +330,7 @@ export default function PayOrderClient({
         </div>
 
         <div style={{ textAlign: "center", marginTop: 24, color: "#4B5563", fontSize: 12 }}>
-          Powered by <span style={{ color: "#FF6B35", fontWeight: 700 }}>VoceEats</span> by Diginetplore
+          Powered by <span style={{ color: "#FF6B35", fontWeight: 700 }}>DigiVoceEats</span> by Diginetplore
         </div>
       </div>
     </div>

@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     const taxRate = restaurant.tax_rate || 0.06;
 
-    const prompt = `You are a friendly order taker for ${restaurant.name} powered by VoceEats.
+    const prompt = `You are a friendly order taker for ${restaurant.name} powered by DigiVoceEats.
 
 GREETING:
 Say: "Thank you for calling ${restaurant.name}! What can I get for you today?"

@@ -4,14 +4,14 @@ export default function PrivacyPolicy() {
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "40px 24px", fontFamily: "Georgia, serif" }}>
         <div style={{ marginBottom: 32 }}>
           <a href="/" style={{ color: "#FF6B35", textDecoration: "none", fontSize: 14, fontWeight: 600 }}>
-            ← Back to VoceEats
+            ← Back to DigiVoceEats
           </a>
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 900, marginBottom: 8, color: "#111" }}>Privacy Policy</h1>
         <p style={{ color: "#666", marginBottom: 40, fontSize: 14 }}>Last updated: May 18, 2026</p>
 
         {[
-          { title: "1. Information We Collect", content: "When you place an order through VoceEats, we collect your name, phone number, and order details to process and fulfill your order." },
+          { title: "1. Information We Collect", content: "When you place an order through DigiVoceEats, we collect your name, phone number, and order details to process and fulfill your order." },
           { title: "2. How We Use Your Information", content: "We use your information to process orders, send secure payment links, and confirm orders via SMS. We do not use your information for marketing without your consent." },
           { title: "3. SMS Communications", content: "By placing an order through our voice ordering system, you consent to receive SMS messages including order confirmations and secure payment links. Message frequency varies. Message and data rates may apply. Reply STOP to opt out at any time. Reply HELP for help." },
           { title: "4. Data Sharing", content: "We do not sell your personal information to third parties. Order data is shared only with the restaurant fulfilling your order and our payment processor Stripe." },

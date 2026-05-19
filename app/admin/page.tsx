@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,11 +60,7 @@ export default function AdminPage() {
 
       <header style={{ height: 64, borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 28px", background: "rgba(0,0,0,0.5)", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: 26 }}>🎙️</span>
-          <div style={{ display: "flex" }}>
-            <span style={{ fontWeight: 900, fontSize: 20, background: "linear-gradient(135deg,#FF6B35,#FF9A6C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Voce</span>
-            <span style={{ fontWeight: 900, fontSize: 20 }}>Eats</span>
-          </div>
+          <BrandLogo />
           <div style={{ background: "rgba(255,107,53,0.15)", border: "1px solid rgba(255,107,53,0.3)", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: "#FF6B35" }}>
             DIGINETPLORE ADMIN
           </div>
