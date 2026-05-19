@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { detectAndPrint, browserPrint, type PrintOrder } from "@/lib/print";
@@ -23,6 +23,55 @@ function timeAgo(iso: string) {
   if (d < 60) return `${d}s ago`;
   if (d < 3600) return `${Math.floor(d / 60)}m ago`;
   return `${Math.floor(d / 3600)}h ago`;
+}
+
+async function openAudioContext(): Promise<AudioContext | null> {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    if (ctx.state === "suspended") await ctx.resume();
+    return ctx;
+  } catch {
+    return null;
+  }
+}
+
+/** Loud kitchen-bell style alert — Web Audio only, no external files */
+function playKitchenBell(ctx: AudioContext) {
+  const t0 = ctx.currentTime;
+  const out = ctx.createGain();
+  out.connect(ctx.destination);
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(0.92, t0 + 0.015);
+  out.gain.exponentialRampToValueAtTime(0.001, t0 + 2.4);
+
+  const chord = [784, 988, 1175];
+  chord.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = i === 0 ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(freq, t0 + i * 0.02);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.42 / chord.length, t0 + i * 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 1.8);
+    osc.connect(g);
+    g.connect(out);
+    osc.start(t0 + i * 0.02);
+    osc.stop(t0 + 2);
+  });
+
+  const strike = t0 + 0.28;
+  const osc2 = ctx.createOscillator();
+  osc2.type = "square";
+  osc2.frequency.setValueAtTime(1318.51, strike);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, strike);
+  g2.gain.linearRampToValueAtTime(0.35, strike + 0.02);
+  g2.gain.exponentialRampToValueAtTime(0.001, strike + 0.55);
+  osc2.connect(g2);
+  g2.connect(out);
+  osc2.start(strike);
+  osc2.stop(strike + 0.6);
 }
 
 const S = {
@@ -895,6 +944,97 @@ export default function Dashboard() {
   const [isOpen, setIsOpen] = useState(true);
   const [user, setUser] = useState<any>(null);
 
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const baseTitleRef = useRef("VoceEats");
+  const bellRepeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const titleFlashRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const titleFlashOnRef = useRef(false);
+
+  const [alertingOrderIds, setAlertingOrderIds] = useState<string[]>([]);
+  const [orderToasts, setOrderToasts] = useState<{ key: string; orderNumber: string }[]>([]);
+
+  useEffect(() => {
+    baseTitleRef.current = typeof document !== "undefined" && document.title ? document.title : "VoceEats";
+  }, []);
+
+  const ensureAudioCtx = useCallback(async () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = await openAudioContext();
+    } else if (audioCtxRef.current.state === "suspended") {
+      await audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
+
+  const ringBell = useCallback(async () => {
+    const ctx = await ensureAudioCtx();
+    if (ctx) playKitchenBell(ctx);
+  }, [ensureAudioCtx]);
+
+  const addOrderAlert = useCallback(
+    (orderId: string, orderNumber: string) => {
+      setAlertingOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]));
+      const key = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      setOrderToasts((prev) => [...prev, { key, orderNumber }]);
+      window.setTimeout(() => {
+        setOrderToasts((prev) => prev.filter((t) => t.key !== key));
+      }, 10000);
+      void ringBell();
+    },
+    [ringBell],
+  );
+
+  const removeOrderAlert = useCallback((orderId: string) => {
+    setAlertingOrderIds((prev) => prev.filter((id) => id !== orderId));
+  }, []);
+
+  useEffect(() => {
+    if (alertingOrderIds.length === 0) {
+      if (titleFlashRef.current) {
+        clearInterval(titleFlashRef.current);
+        titleFlashRef.current = null;
+      }
+      titleFlashOnRef.current = false;
+      document.title = baseTitleRef.current;
+      return;
+    }
+    const tick = () => {
+      titleFlashOnRef.current = !titleFlashOnRef.current;
+      document.title = titleFlashOnRef.current ? "🔔 New Order!" : baseTitleRef.current;
+    };
+    tick();
+    titleFlashRef.current = setInterval(tick, 1000);
+    return () => {
+      if (titleFlashRef.current) {
+        clearInterval(titleFlashRef.current);
+        titleFlashRef.current = null;
+      }
+      document.title = baseTitleRef.current;
+    };
+  }, [alertingOrderIds.length]);
+
+  useEffect(() => {
+    if (alertingOrderIds.length === 0) {
+      if (bellRepeatRef.current) {
+        clearInterval(bellRepeatRef.current);
+        bellRepeatRef.current = null;
+      }
+      return;
+    }
+    if (bellRepeatRef.current != null) return;
+    bellRepeatRef.current = setInterval(() => {
+      void ringBell();
+    }, 30000);
+  }, [alertingOrderIds.length, ringBell]);
+
+  useEffect(() => {
+    return () => {
+      if (bellRepeatRef.current) clearInterval(bellRepeatRef.current);
+      if (titleFlashRef.current) clearInterval(titleFlashRef.current);
+      document.title = baseTitleRef.current;
+    };
+  }, []);
+
   useEffect(() => {
     initDashboard();
   }, []);
@@ -911,16 +1051,65 @@ export default function Dashboard() {
           await supabase.from("restaurants").update({ is_open: data.is_open }).eq("id", restaurant.id);
           console.log(`Auto ${data.is_open ? "opened" : "closed"} restaurant`);
         }
-      } catch (e) { console.error("Hours check failed:", e); }
+      } catch (e) {
+        console.error("Hours check failed:", e);
+      }
     };
     checkHours();
     const interval = setInterval(checkHours, 60000);
     return () => clearInterval(interval);
   }, [restaurant, isOpen]);
 
+  useEffect(() => {
+    if (!restaurant?.id) return;
+
+    const restaurantId = restaurant.id;
+    const channel = supabase
+      .channel(`orders-realtime-${restaurantId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "orders",
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          setOrders((prev) => [row as any, ...prev]);
+          if (row.status === "pending") {
+            addOrderAlert(String(row.id), String(row.order_number ?? row.id));
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "orders",
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          setOrders((prev) => prev.map((o) => (o.id === row.id ? { ...o, ...row } : o)));
+          if (row.status !== "pending") {
+            removeOrderAlert(String(row.id));
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [restaurant?.id, addOrderAlert, removeOrderAlert]);
+
   const initDashboard = async () => {
     // Check auth
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       router.push("/login");
       return;
@@ -928,19 +1117,11 @@ export default function Dashboard() {
     setUser(user);
 
     // Get restaurant for this user
-    const { data: rest } = await supabase
-      .from("restaurants")
-      .select("*")
-      .eq("owner_id", user.id)
-      .single();
+    const { data: rest } = await supabase.from("restaurants").select("*").eq("owner_id", user.id).single();
 
     if (!rest) {
       // For demo — use the Bread & Kabob restaurant
-      const { data: demoRest } = await supabase
-        .from("restaurants")
-        .select("*")
-        .eq("slug", "bread-kabob")
-        .single();
+      const { data: demoRest } = await supabase.from("restaurants").select("*").eq("slug", "bread-kabob").single();
       setRestaurant(demoRest);
       loadOrders(demoRest?.id);
       return;
@@ -949,7 +1130,6 @@ export default function Dashboard() {
     setRestaurant(rest);
     setIsOpen(rest.is_open);
     loadOrders(rest.id);
-    subscribeToOrders(rest.id);
   };
 
   const loadOrders = async (restaurantId: string) => {
@@ -965,48 +1145,11 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  const subscribeToOrders = (restaurantId: string) => {
-    const channel = supabase
-      .channel("orders-realtime")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "orders",
-        filter: `restaurant_id=eq.${restaurantId}`,
-      }, (payload) => {
-        setOrders(prev => [payload.new as any, ...prev]);
-        // Play alert sound
-        try {
-          const ctx = new AudioContext();
-          const beep = (freq: number, start: number, dur: number) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.value = freq;
-            gain.gain.setValueAtTime(0.4, ctx.currentTime + start);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
-            osc.start(ctx.currentTime + start);
-            osc.stop(ctx.currentTime + start + dur);
-          };
-          beep(880, 0, 0.15);
-          beep(1100, 0.2, 0.15);
-          beep(1320, 0.4, 0.25);
-        } catch {}
-      })
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "orders",
-      }, (payload) => {
-        setOrders(prev => prev.map(o => o.id === payload.new.id ? payload.new : o));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  };
-
   const updateOrder = (id: string, status: string) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    if (status === "accepted" || status === "rejected") {
+      removeOrderAlert(id);
+    }
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
   };
 
   const toggleRestaurant = async () => {
@@ -1054,9 +1197,51 @@ export default function Dashboard() {
     <div style={{ minHeight: "100vh", background: "#0A0A0F", fontFamily: "'Segoe UI', sans-serif", color: "#F9FAFB" }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        @keyframes toastSlide { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
       `}</style>
+
+      {orderToasts.length > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            top: 76,
+            right: 20,
+            zIndex: 250,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            alignItems: "flex-end",
+            maxWidth: 360,
+            pointerEvents: "none",
+          }}
+        >
+          {orderToasts.map((t) => (
+            <div
+              key={t.key}
+              style={{
+                pointerEvents: "auto",
+                animation: "toastSlide 0.35s ease-out",
+                minWidth: 280,
+                padding: "16px 20px",
+                background: "rgba(26,26,46,0.97)",
+                border: "1px solid rgba(255,107,53,0.5)",
+                borderRadius: 14,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div style={{ color: "#FF6B35", fontSize: 11, fontWeight: 800, letterSpacing: 1, marginBottom: 6 }}>
+                NEW ORDER RECEIVED
+              </div>
+              <div style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 17 }}>New Order Received</div>
+              <div style={{ color: "#9CA3AF", fontSize: 14, marginTop: 8, fontWeight: 600 }}>{t.orderNumber}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Header */}
       <header style={{
