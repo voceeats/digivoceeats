@@ -32,8 +32,8 @@ export function BrandLogo({ priority = false, variant = "default" }: BrandLogoPr
       <Image
         src="/digivoceeats_logo.png"
         alt="DigiVoceEats"
-        height={40}
-        width={220}
+        width={512}
+        height={512}
         style={{
           height: 40,
           width: "auto",

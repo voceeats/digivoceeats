@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
@@ -1204,13 +1204,19 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const pendingRingRef = useRef(false);
   const baseTitleRef = useRef("DigiVoceEats");
   const bellRepeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const titleFlashRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const titleFlashOnRef = useRef(false);
 
-  const [alertingOrderIds, setAlertingOrderIds] = useState<string[]>([]);
+  const [soundActive, setSoundActive] = useState(false);
   const [orderToasts, setOrderToasts] = useState<{ key: string; orderNumber: string }[]>([]);
+
+  const pending = useMemo(
+    () => orders.filter((o) => o.status === "pending").length,
+    [orders],
+  );
 
   useEffect(() => {
     baseTitleRef.current = typeof document !== "undefined" && document.title ? document.title : "DigiVoceEats";
@@ -1227,32 +1233,61 @@ export default function Dashboard() {
 
   const ringBell = useCallback(async () => {
     const ctx = await ensureAudioCtx();
-    if (ctx) playKitchenBell(ctx);
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {
+        pendingRingRef.current = true;
+        return;
+      }
+    }
+    if (ctx.state === "running") {
+      playKitchenBell(ctx);
+      pendingRingRef.current = false;
+    } else {
+      pendingRingRef.current = true;
+    }
+  }, [ensureAudioCtx]);
+
+  // Browser autoplay policy: unlock audio on first user interaction, then play any queued bell
+  useEffect(() => {
+    const unlockAudio = async () => {
+      const ctx = await ensureAudioCtx();
+      if (ctx?.state === "running") {
+        if (pendingRingRef.current) {
+          pendingRingRef.current = false;
+          playKitchenBell(ctx);
+        }
+      }
+    };
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
   }, [ensureAudioCtx]);
 
   const addOrderAlert = useCallback(
     (orderId: string, orderNumber: string) => {
-      setAlertingOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]));
       const key = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       setOrderToasts((prev) => [...prev, { key, orderNumber }]);
       window.setTimeout(() => {
         setOrderToasts((prev) => prev.filter((t) => t.key !== key));
       }, 10000);
+      setSoundActive(true);
       void ringBell();
     },
     [ringBell],
   );
 
-  const removeOrderAlert = useCallback((orderId: string) => {
-    setAlertingOrderIds((prev) => prev.filter((id) => id !== orderId));
-  }, []);
-
   const silenceAlerts = useCallback(() => {
-    setAlertingOrderIds([]);
+    setSoundActive(false);
   }, []);
 
   useEffect(() => {
-    if (alertingOrderIds.length === 0) {
+    if (!soundActive) {
       if (titleFlashRef.current) {
         clearInterval(titleFlashRef.current);
         titleFlashRef.current = null;
@@ -1274,10 +1309,16 @@ export default function Dashboard() {
       }
       document.title = baseTitleRef.current;
     };
-  }, [alertingOrderIds.length]);
+  }, [soundActive]);
 
   useEffect(() => {
-    if (alertingOrderIds.length === 0) {
+    if (pending === 0) {
+      setSoundActive(false);
+    }
+  }, [pending]);
+
+  useEffect(() => {
+    if (!soundActive || pending === 0) {
       if (bellRepeatRef.current) {
         clearInterval(bellRepeatRef.current);
         bellRepeatRef.current = null;
@@ -1288,7 +1329,13 @@ export default function Dashboard() {
     bellRepeatRef.current = setInterval(() => {
       void ringBell();
     }, 30000);
-  }, [alertingOrderIds.length, ringBell]);
+    return () => {
+      if (bellRepeatRef.current) {
+        clearInterval(bellRepeatRef.current);
+        bellRepeatRef.current = null;
+      }
+    };
+  }, [soundActive, pending, ringBell]);
 
   useEffect(() => {
     return () => {
@@ -1359,9 +1406,6 @@ export default function Dashboard() {
         (payload) => {
           const row = payload.new as Record<string, unknown>;
           setOrders((prev) => prev.map((o) => (o.id === row.id ? { ...o, ...row } : o)));
-          if (row.status !== "pending") {
-            removeOrderAlert(String(row.id));
-          }
         },
       )
       .subscribe();
@@ -1369,7 +1413,7 @@ export default function Dashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [restaurant?.id, addOrderAlert, removeOrderAlert]);
+  }, [restaurant?.id, addOrderAlert]);
 
   const initDashboard = async () => {
     // Check auth
@@ -1412,9 +1456,6 @@ export default function Dashboard() {
   };
 
   const updateOrder = (id: string, status: string) => {
-    if (status === "accepted" || status === "rejected") {
-      removeOrderAlert(id);
-    }
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
   };
 
@@ -1434,7 +1475,6 @@ export default function Dashboard() {
     router.push("/login");
   };
 
-  const pending = orders.filter(o => o.status === "pending").length;
   const todayOrders = orders.filter(o => {
     const today = new Date().toDateString();
     return new Date(o.created_at).toDateString() === today;
@@ -1569,7 +1609,7 @@ export default function Dashboard() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 22, animation: alertingOrderIds.length > 0 ? "pulse 1.5s infinite" : "none" }}>🔔</span>
+            <span style={{ fontSize: 22, animation: soundActive ? "pulse 1.5s infinite" : "none" }}>🔔</span>
             <div>
               <div style={{ color: "#FF6B35", fontWeight: 800, fontSize: 15 }}>
                 New Orders Pending — {pending} {pending === 1 ? "order needs" : "orders need"} attention
@@ -1579,7 +1619,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          {alertingOrderIds.length > 0 && (
+          {soundActive && (
             <button
               type="button"
               onClick={silenceAlerts}
