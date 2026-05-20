@@ -13,7 +13,7 @@ export default function Terms() {
         {[
           { title: "1. Service Description", content: "DigiVoceEats provides an AI-powered voice ordering platform for restaurants operated by Diginetplore LLC. Customers place food orders by calling a designated phone number." },
           { title: "2. Acceptance of Terms", content: "By using DigiVoceEats services, you agree to these terms. If you do not agree, please do not use our service." },
-          { title: "3. SMS Messaging", content: "By providing your phone number, you consent to receive SMS messages for order confirmations and payment links. Reply STOP to opt out. Message and data rates may apply." },
+          { title: "3. SMS Messaging", content: "By verbally confirming your phone number during the AI voice ordering call, you consent to receive a one-time SMS message containing your order payment link. Message and data rates may apply. Reply STOP to opt out at any time. Reply HELP for assistance. Message frequency: one per order." },
           { title: "4. Payments", content: "Payments are processed securely through Stripe. DigiVoceEats charges a 15% service fee on all orders processed through our platform. This fee is included in the prices quoted to customers." },
           { title: "5. Order Accuracy", content: "While our AI strives for accuracy, please confirm your order details before payment. Contact the restaurant directly for order modifications after payment." },
           { title: "6. Refunds", content: "Refund requests should be directed to the restaurant directly. DigiVoceEats platform fees are non-refundable once an order is processed." },
