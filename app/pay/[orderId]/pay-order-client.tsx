@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
 
 type OrderRow = {
@@ -30,6 +31,7 @@ export default function PayOrderClient({
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [smsConsent, setSmsConsent] = useState(false);
   const [error, setError] = useState("");
 
   const loadOrder = useCallback(async () => {
@@ -285,22 +287,50 @@ export default function PayOrderClient({
               </div>
             ) : (
               <>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginBottom: 16,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={smsConsent}
+                    onChange={(e) => setSmsConsent(e.target.checked)}
+                    style={{ marginTop: 2, flexShrink: 0, accentColor: "#FF6B35" }}
+                  />
+                  <span style={{ color: "#9CA3AF", fontSize: 12, lineHeight: 1.5 }}>
+                    By proceeding, I agree to receive SMS order updates from DigiVoceEats. Message and data rates may apply. Reply STOP to opt out.{" "}
+                    <Link
+                      href="/privacy-policy"
+                      style={{ color: "#6B7280", textDecoration: "underline" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Privacy Policy
+                    </Link>
+                  </span>
+                </label>
+
                 <button
                   type="button"
                   onClick={handlePay}
-                  disabled={paying}
+                  disabled={!smsConsent || paying}
                   style={{
                     width: "100%",
-                    background: paying ? "#374151" : "linear-gradient(135deg,#FF6B35,#FF8C5A)",
+                    background: !smsConsent || paying ? "#374151" : "linear-gradient(135deg,#FF6B35,#FF8C5A)",
                     color: "#fff",
                     border: "none",
                     borderRadius: 14,
                     padding: "18px",
                     fontSize: 17,
                     fontWeight: 800,
-                    cursor: paying ? "not-allowed" : "pointer",
+                    cursor: !smsConsent || paying ? "not-allowed" : "pointer",
                     fontFamily: "inherit",
                     marginBottom: 12,
+                    opacity: !smsConsent ? 0.7 : 1,
                   }}
                 >
                   {paying ? "Redirecting to payment..." : `Pay $${total.toFixed(2)} Securely →`}
