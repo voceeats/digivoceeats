@@ -13,7 +13,23 @@ export default function PrivacyPolicy() {
         {[
           { title: "1. Information We Collect", content: "When you place an order through DigiVoceEats, we collect your name, phone number, and order details to process and fulfill your order." },
           { title: "2. How We Use Your Information", content: "We use your information to process orders, send secure payment links, and confirm orders via SMS. We do not use your information for marketing without your consent." },
-          { title: "3. SMS Communications", content: "By placing an order through our voice ordering system, you consent to receive SMS messages including order confirmations and secure payment links. Message frequency varies. Message and data rates may apply. Reply STOP to opt out at any time. Reply HELP for help." },
+          {
+            title: "3. SMS Messaging & Mobile Communications",
+            content: `DigiVoceEats sends one-time transactional SMS messages containing payment links to customers who place food orders through our voice AI system.
+
+Opt-in: Customers opt in by checking a consent checkbox on our payment page before completing their order.
+
+Message frequency: One (1) SMS message per order placed. No recurring messages.
+
+Message and data rates may apply depending on your carrier and plan.
+
+Mobile numbers are never shared with third parties or affiliates for marketing or promotional purposes. Your phone number is used solely to deliver your order payment link.
+
+To opt out: Reply STOP to any message to unsubscribe immediately.
+To get help: Reply HELP to any message.
+
+For questions contact: hello@digivoceeats.com`,
+          },
           { title: "4. Data Sharing", content: "We do not sell your personal information to third parties. Order data is shared only with the restaurant fulfilling your order and our payment processor Stripe." },
           { title: "5. Data Security", content: "We use industry-standard security measures to protect your personal information. Payment data is processed securely through Stripe and we never store card details." },
           { title: "6. Your Rights", content: "You may request deletion of your personal data at any time by contacting us. You can opt out of SMS communications by replying STOP to any message." },
@@ -21,7 +37,7 @@ export default function PrivacyPolicy() {
         ].map(section => (
           <div key={section.title} style={{ marginBottom: 32 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, color: "#111" }}>{section.title}</h2>
-            <p style={{ color: "#444", lineHeight: 1.8, fontSize: 15 }}>{section.content}</p>
+            <p style={{ color: "#444", lineHeight: 1.8, fontSize: 15, whiteSpace: "pre-line" }}>{section.content}</p>
           </div>
         ))}
 
