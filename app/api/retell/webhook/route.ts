@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import twilio from "twilio";
+import { sendPaymentLink } from "@/lib/sms";
+import { formatPhone } from "@/lib/twilio";
 
 const DEMO_RESTAURANT_ID = "339ad678-297a-4d57-9f4b-a502650829d3";
 
@@ -108,54 +109,6 @@ function parseOrderFromTranscript(transcript: string): Array<{ id: string; name:
     }
   }
   return items;
-}
-
-function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11) return `+${digits}`;
-  return `+${digits}`;
-}
-
-async function sendPaymentSMS(
-  to: string,
-  restaurantName: string,
-  orderNumber: string,
-  total: number,
-  orderId: string
-) {
-  try {
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
-      console.error("❌ Twilio credentials missing in environment");
-      return false;
-    }
-
-    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${orderId}`;
-
-    const message = await client.messages.create({
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: formatPhone(to),
-      body: `🍽️ ${restaurantName}
-
-Your order ${orderNumber} is confirmed!
-Total: $${total.toFixed(2)}
-
-Pay securely here:
-${paymentUrl}
-
-⏱️ Link expires in 30 minutes
-✅ Accepts Apple Pay & Google Pay
-
-Reply STOP to opt out.`,
-    });
-
-    console.log(`✅ SMS sent to ${to} - SID: ${message.sid}`);
-    return true;
-  } catch (error: any) {
-    console.error("❌ SMS send error:", error.message);
-    return false;
-  }
 }
 
 async function findOrderByRetellCallId(callId: string) {
@@ -335,13 +288,15 @@ export async function POST(request: NextRequest) {
     // Send SMS payment link
     if (paymentMethod === "sms_link" && customerPhone) {
       console.log(`📱 Sending SMS to ${customerPhone}`);
-      const smsSent = await sendPaymentSMS(
-        customerPhone,
+      const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${order.id}`;
+      const smsSent = await sendPaymentLink({
+        to: formatPhone(customerPhone),
         restaurantName,
-        order.order_number,
+        orderNumber: order.order_number,
         total,
-        order.id
-      );
+        paymentUrl,
+        expiryMinutes: 30,
+      });
       if (smsSent) {
         await supabaseAdmin
           .from("orders")

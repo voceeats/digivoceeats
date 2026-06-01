@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { constructWebhookEvent, stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendIVRPaymentConfirmation, sendOrderConfirmation } from "@/lib/twilio";
-import twilio from "twilio";
+import { sendIVRPaymentConfirmation, sendOrderConfirmation, sendSmsWithFallback } from "@/lib/sms";
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -133,26 +132,17 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
   console.log(`✅ Order ${order.order_number} marked paid (checkout.session.completed)`);
 
-  if (phone && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
-    try {
-      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      await client.messages.create({
-        to: phone,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        body: `✅ Payment confirmed for your order at ${restaurantName}!
+  if (phone) {
+    const confirmationBody = `✅ Payment confirmed for your order at ${restaurantName}!
 
 Order: ${order.order_number}
 Total paid: $${totalNum.toFixed(2)}
 
 Your food will be ready in approximately 25 minutes. Thank you for using DigiVoceEats!
 
-Reply STOP to opt out.`,
-      });
-      console.log(`📱 Confirmation SMS sent to ${phone}`);
-    } catch (smsError: unknown) {
-      const m = smsError instanceof Error ? smsError.message : String(smsError);
-      console.error("SMS confirmation failed:", m);
-    }
+Reply STOP to opt out.`;
+
+    await sendSmsWithFallback(phone, confirmationBody);
   }
 
   await bumpCustomerStats(phone || order.customer_phone, totalNum);

@@ -13,10 +13,7 @@ export async function sendPaymentLink({
   to: string; restaurantName: string; orderNumber: string;
   total: number; paymentUrl: string; expiryMinutes?: number;
 }) {
-  const message = await client.messages.create({
-    from: FROM,
-    to,
-    body: `🍽️ ${restaurantName}
+  const body = `🍽️ ${restaurantName}
 
 Order ${orderNumber}
 Total: $${total.toFixed(2)}
@@ -27,7 +24,20 @@ ${paymentUrl}
 ⏱️ Link expires in ${expiryMinutes} minutes
 ✅ Accepts Apple Pay & Google Pay
 
-Reply STOP to opt out.`,
+Reply STOP to opt out.`;
+
+  return sendRawSms(to, body);
+}
+
+export async function sendRawSms(to: string, body: string) {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
+    throw new Error("Twilio credentials missing in environment");
+  }
+
+  const message = await client.messages.create({
+    from: FROM,
+    to,
+    body,
   });
   return message.sid;
 }
