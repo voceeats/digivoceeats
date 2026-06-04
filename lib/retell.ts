@@ -14,6 +14,39 @@ For digits say: Zero, One, Two, Three, Four, Five, Six, Seven, Eight, Nine
 Example — payment_code A3F2: "Alpha ... Three ... Foxtrot ... Two"
 Pause briefly between each character. If asked to repeat, read the code again the same way.`;
 
+export type MenuItemForPrompt = {
+  name: string;
+  voiceeats_price: number;
+  description?: string | null;
+  category?: string;
+};
+
+/** Build menu block for Retell prompt — available items only, voiceeats_price, grouped by category. */
+export function formatMenuTextForPrompt(items: MenuItemForPrompt[]): string {
+  const byCategory: Record<string, MenuItemForPrompt[]> = {};
+  items.forEach((item) => {
+    const cat = item.category || "Other";
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(item);
+  });
+
+  return Object.entries(byCategory)
+    .map(([cat, catItems]) => {
+      const itemLines = catItems
+        .map((item) => {
+          const amount = Number(item.voiceeats_price);
+          let line = `${item.name}: $${amount.toFixed(2)}`;
+          if (item.description?.trim()) {
+            line += ` (${item.description.trim()})`;
+          }
+          return line;
+        })
+        .join("\n");
+      return `${cat.toUpperCase()}:\n${itemLines}`;
+    })
+    .join("\n\n");
+}
+
 export type RetellPromptOptions = {
   restaurantName: string;
   restaurantId?: string;
@@ -60,20 +93,30 @@ Step 5 — CUSTOMER NAME:
 - If you already have the customer's name from lookup_customer, confirm it: "And this is for [name], correct?"
 - Otherwise ask: "Can I get your name for the order?"
 
-Step 6 — SUBMIT ORDER (required before Step 7):
-- Call submit_order with customer_name, order_summary, order_total, and any special_notes
-- order_summary format: "Item Name, qty, $price; Item Name, qty, $price"
-- WAIT for the response — you MUST receive payment_code from submit_order before Step 7
-- NEVER invent or guess a payment code
+Step 5B — CONFIRM PHONE NUMBER (required before submit_order):
+- lookup_customer already fetched the caller's phone at the start — use that number unless the customer gives a different one
+- Say: "I have your number as [read the 10 digits grouped with pauses: XXX ... XXX ... XXXX]. Is that the correct number for your order?"
+- If yes: keep that number for submit_order
+- If no: ask "What number should I use?" and use the number they provide
+- This confirmed phone is how the customer looks up their order at digivoceeats.com/pay
 
-Step 7 — PAYMENT INSTRUCTIONS (do NOT send SMS or mention text messages):
-Say (replace [name] with the customer's name):
+Step 6 — SUBMIT ORDER (MANDATORY — do not skip):
+- You MUST call the submit_order function before giving any payment instructions
+- Pass customer_name, customer_phone (confirmed in Step 5B), order_summary, order_total, and any special_notes
+- order_summary format: "Item Name, qty, $price; Item Name, qty, $price" — use voiceeats_price amounts
+- STOP and WAIT for the submit_order response
+- You MUST receive payment_code in the response before saying anything about payment
+- If submit_order fails, apologize and offer to try again — NEVER proceed to Step 7 without a valid payment_code
+- NEVER invent, guess, or make up a payment code
 
-"Perfect [name]! To complete your order, go to digivoceeats.com/pay on your phone or computer and enter your 4-digit code:"
+Step 7 — PAYMENT INSTRUCTIONS (only after payment_code received from submit_order):
+Say EXACTLY (replace [name] with customer name; replace the code section with NATO phonetics for payment_code):
 
-Then read payment_code using NATO phonetics (see guide below).
+"Perfect [name]! To complete your order, go to digivoceeats.com/pay on your phone and enter your 4-digit code: [read each character of payment_code slowly using NATO phonetics with a pause between each character]
 
-Then say: "Your order will be ready 25 minutes after payment. Is there anything else I can help you with?"
+Your order will be ready 25 minutes after payment."
+
+Then ask: "Is there anything else I can help you with?"
 
 ${NATO_PHONETIC_GUIDE}
 
@@ -81,6 +124,7 @@ PAYMENT CODE RULES:
 - payment_code is the LAST 4 CHARACTERS of order_number returned by submit_order
 - Always use NATO phonetics for letters and spoken number words for digits
 - Do NOT mention SMS, text messages, or payment links by phone
+- Do NOT say Step 7 payment instructions until submit_order has returned payment_code
 
 Step 8 — CLOSING:
 - If the customer says no or they are all set, say: "Thank you for ordering from ${restaurantName}! We look forward to serving you. Goodbye!"
@@ -155,11 +199,11 @@ export function buildSubmitOrderTool(appUrl: string) {
     type: "custom",
     name: "submit_order",
     description:
-      "Submit the confirmed order and receive the 4-digit payment code. Call AFTER Step 5 (customer name) and BEFORE Step 7 (payment instructions). Returns payment_code (last 4 characters of order_number).",
+      "MANDATORY: Submit the confirmed order and receive the 4-digit payment_code. Call ONLY after Step 5B (phone confirmed). MUST complete successfully before Step 7. Returns payment_code (last 4 characters of order_number).",
     url: `${appUrl}/api/retell/submit-order`,
     method: "POST",
     speak_during_execution: true,
-    speak_after_execution: false,
+    speak_after_execution: true,
     execution_message_description: "One moment while I submit your order.",
     parameters: {
       type: "object",
@@ -168,10 +212,14 @@ export function buildSubmitOrderTool(appUrl: string) {
           type: "string",
           description: "Customer name for the order",
         },
+        customer_phone: {
+          type: "string",
+          description: "Phone number confirmed in Step 5B (10 digits, any format)",
+        },
         order_summary: {
           type: "string",
           description:
-            'Semicolon-separated items with qty and price, e.g. "Kubideh Platter, 1, $14.89; Basmati Rice, 1, $3.44"',
+            'Semicolon-separated items with qty and voiceeats_price, e.g. "Kubideh Platter, 1, $14.89; Basmati Rice, 1, $3.44"',
         },
         order_total: {
           type: "string",
@@ -182,7 +230,7 @@ export function buildSubmitOrderTool(appUrl: string) {
           description: "Special instructions or allergies",
         },
       },
-      required: ["customer_name", "order_summary", "order_total"],
+      required: ["customer_name", "customer_phone", "order_summary", "order_total"],
     },
   };
 }
@@ -227,44 +275,31 @@ export function buildMenuPrompt(
   phone: string,
   items: Array<{
     name: string;
-    price: number;
-    description?: string;
+    voiceeats_price: number;
+    description?: string | null;
     category?: string;
     is_available: boolean;
     allergens?: string[];
   }>,
   restaurantId?: string,
+  taxPct = "8.75",
 ): string {
-  const availableItems = items.filter((i) => i.is_available);
+  const availableItems = items
+    .filter((i) => i.is_available)
+    .map((item) => ({
+      name: item.name,
+      voiceeats_price: item.voiceeats_price,
+      description: item.description,
+      category: item.category,
+    }));
 
-  const byCategory: Record<string, typeof availableItems> = {};
-  availableItems.forEach((item) => {
-    const cat = item.category || "Other";
-    if (!byCategory[cat]) byCategory[cat] = [];
-    byCategory[cat].push(item);
-  });
-
-  const menuText = Object.entries(byCategory)
-    .map(([cat, catItems]) => {
-      const itemLines = catItems
-        .map((item) => {
-          let line = `- ${item.name}: $${item.price.toFixed(2)}`;
-          if (item.description) line += ` (${item.description})`;
-          if (item.allergens?.length) {
-            line += ` [Contains: ${item.allergens.join(", ")}]`;
-          }
-          return line;
-        })
-        .join("\n");
-      return `${cat}:\n${itemLines}`;
-    })
-    .join("\n\n");
+  const menuText = formatMenuTextForPrompt(availableItems);
 
   return buildRetellOrderFlowPrompt({
     restaurantName,
     restaurantId,
     menuText,
-    taxPct: "8.75",
+    taxPct,
     phone,
   });
 }
@@ -285,24 +320,28 @@ export async function syncMenuToRetell(restaurantId: string) {
     .from("menu_items")
     .select("*, menu_categories(name)")
     .eq("restaurant_id", restaurantId)
+    .eq("is_available", true)
     .order("display_order");
 
   if (!items) return;
 
   const menuItems = items.map((item) => ({
     name: item.name,
-    price: item.price,
-    description: item.description || undefined,
+    voiceeats_price: Number(item.voiceeats_price ?? item.price * 1.15),
+    description: item.description,
     category: (item.menu_categories as { name?: string })?.name,
-    is_available: item.is_available,
+    is_available: true,
     allergens: item.allergens || [],
   }));
+
+  const taxPct = ((restaurant.tax_rate ?? 0.06) * 100).toFixed(1);
 
   const prompt = buildMenuPrompt(
     restaurant.name,
     restaurant.phone || "",
     menuItems,
     restaurantId,
+    taxPct,
   );
 
   const response = await fetch(

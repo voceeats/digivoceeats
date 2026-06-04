@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   buildRetellOrderFlowPrompt,
+  formatMenuTextForPrompt,
   mergeRetellGeneralTools,
 } from "@/lib/retell";
 
@@ -54,37 +55,28 @@ export async function POST(request: NextRequest) {
 
     const llmExisting = await llmGetResponse.json();
 
-    const { data: items } = await supabaseAdmin
+    // Fresh menu from Supabase — available items only, voiceeats_price
+    const { data: items, error: menuError } = await supabaseAdmin
       .from("menu_items")
-      .select("*, menu_categories(name)")
+      .select("name, description, voiceeats_price, price, display_order, menu_categories(name)")
       .eq("restaurant_id", restaurantId)
       .eq("is_available", true)
       .order("display_order");
 
+    if (menuError) throw menuError;
+
     if (!items?.length) {
-      return NextResponse.json({ error: "No menu items" }, { status: 400 });
+      return NextResponse.json({ error: "No available menu items" }, { status: 400 });
     }
 
-    const byCategory: Record<string, typeof items> = {};
-    items.forEach((item) => {
-      const cat = (item.menu_categories as { name?: string })?.name || "Other";
-      if (!byCategory[cat]) byCategory[cat] = [];
-      byCategory[cat].push(item);
-    });
-
-    const menuText = Object.entries(byCategory)
-      .map(([cat, catItems]) => {
-        const itemLines = catItems
-          .map((item) => {
-            const price = item.voiceeats_price || item.price;
-            let line = `- ${item.name}: $${Number(price).toFixed(2)}`;
-            if (item.description) line += ` (${item.description})`;
-            return line;
-          })
-          .join("\n");
-        return `${cat.toUpperCase()}:\n${itemLines}`;
-      })
-      .join("\n\n");
+    const menuText = formatMenuTextForPrompt(
+      items.map((item) => ({
+        name: item.name,
+        voiceeats_price: Number(item.voiceeats_price ?? item.price * 1.15),
+        description: item.description,
+        category: (item.menu_categories as { name?: string } | null)?.name,
+      })),
+    );
 
     const taxRate = restaurant.tax_rate || 0.06;
     const taxPct = (taxRate * 100).toFixed(1);
@@ -118,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     const llmData = await llmResponse.json();
-    console.log(`✅ LLM updated - version: ${llmData.version}`);
+    console.log(`✅ LLM updated - version: ${llmData.version}, items: ${items.length}`);
 
     return NextResponse.json({
       success: true,

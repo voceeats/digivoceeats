@@ -16,19 +16,28 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error;
 
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/menu/sync-retell`, {
+    const syncRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/menu/sync-retell`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ restaurantId }),
     });
 
+    const syncBody = await syncRes.json().catch(() => ({}));
+    if (!syncRes.ok) {
+      console.error("Retell sync after toggle failed:", syncBody);
+    } else {
+      console.log(`✅ Retell synced after toggle (${isAvailable ? "enabled" : "disabled"} item ${itemId})`);
+    }
+
     return NextResponse.json({
       success: true,
       is_available: isAvailable,
-      message: isAvailable ? "Item is now available" : "Item marked as sold out"
+      retell_synced: syncRes.ok,
+      items_synced: syncBody?.items_synced,
+      message: isAvailable ? "Item is now available" : "Item marked as sold out",
     });
-
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Toggle failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
