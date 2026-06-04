@@ -125,6 +125,8 @@ export async function createCheckoutSession(
   restaurantStripeAccountId: string,
   restaurantName: string,
   customerEmail?: string,
+  successUrl?: string,
+  cancelUrl?: string,
 ) {
   const platformFeeInCents = Math.round(order.total * PLATFORM_FEE_PERCENT * 100);
 
@@ -158,8 +160,8 @@ export async function createCheckoutSession(
     payment_method_types: ["card"],
     line_items: lineItems,
     mode: "payment",
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL}/order-confirmed/${order.id}?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pay/${order.id}?cancelled=true`,
+    success_url: successUrl || `${process.env.NEXT_PUBLIC_APP_URL}/order-confirmed/${order.id}?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL}/pay/${order.id}?cancelled=true`,
     customer_email: customerEmail || undefined,
     payment_intent_data: {
       application_fee_amount: platformFeeInCents,

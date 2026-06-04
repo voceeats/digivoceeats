@@ -9,7 +9,7 @@ function toNum(v: unknown): number {
 
 export async function POST(request: NextRequest) {
   try {
-    const { orderId } = await request.json();
+    const { orderId, successReturn } = await request.json();
 
     const { data: order } = await supabaseAdmin
       .from("orders")
@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
       restaurant.stripe_account_id,
       restaurant.name,
       order.customer_email || undefined,
+      successReturn === "pay" ? `${process.env.NEXT_PUBLIC_APP_URL}/pay?success=1` : undefined,
+      successReturn === "pay" ? `${process.env.NEXT_PUBLIC_APP_URL}/pay` : undefined,
     );
 
     await supabaseAdmin
