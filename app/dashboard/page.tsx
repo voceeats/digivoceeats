@@ -1215,6 +1215,9 @@ export default function Dashboard() {
   const [isOpen, setIsOpen] = useState(true);
   const [user, setUser] = useState<any>(null);
 
+  /** Manual toggle override — respected until next open/close boundary */
+  const hoursOverrideRef = useRef<{ value: boolean; untilMs: number } | null>(null);
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const pendingRingRef = useRef(false);
   const baseTitleRef = useRef("DigiVoceEats");
@@ -1361,26 +1364,50 @@ export default function Dashboard() {
     initDashboard();
   }, []);
 
-  // Auto open/close based on hours - check every minute
+  // Auto open/close based on opening hours — check every minute
   useEffect(() => {
-    if (!restaurant) return;
+    if (!restaurant?.id) return;
+
+    const restaurantId = restaurant.id;
+
     const checkHours = async () => {
       try {
-        const r = await fetch(`/api/restaurant/hours?restaurantId=${restaurant.id}`);
+        const r = await fetch(`/api/restaurant/hours?restaurantId=${restaurantId}`);
         const data = await r.json();
-        if (typeof data.is_open === "boolean" && data.is_open !== isOpen) {
-          setIsOpen(data.is_open);
-          await supabase.from("restaurants").update({ is_open: data.is_open }).eq("id", restaurant.id);
-          console.log(`Auto ${data.is_open ? "opened" : "closed"} restaurant`);
+        if (typeof data.scheduled_open !== "boolean") return;
+
+        const now = Date.now();
+        const override = hoursOverrideRef.current;
+
+        if (override && now < override.untilMs) {
+          setIsOpen((prev) => (prev === override.value ? prev : override.value));
+          return;
         }
+
+        if (override && now >= override.untilMs) {
+          hoursOverrideRef.current = null;
+        }
+
+        const scheduledOpen = data.scheduled_open;
+        setIsOpen((prev) => {
+          if (prev !== scheduledOpen) {
+            void supabase
+              .from("restaurants")
+              .update({ is_open: scheduledOpen })
+              .eq("id", restaurantId);
+            console.log(`Auto ${scheduledOpen ? "opened" : "closed"} restaurant (hours)`);
+          }
+          return scheduledOpen;
+        });
       } catch (e) {
         console.error("Hours check failed:", e);
       }
     };
+
     checkHours();
-    const interval = setInterval(checkHours, 60000);
+    const interval = setInterval(checkHours, 60_000);
     return () => clearInterval(interval);
-  }, [restaurant, isOpen]);
+  }, [restaurant?.id]);
 
   useEffect(() => {
     if (!restaurant?.id) return;
@@ -1468,7 +1495,6 @@ export default function Dashboard() {
     }
 
     setRestaurant(rest);
-    setIsOpen(rest.is_open);
     loadOrders(rest.id);
   };
 
@@ -1490,14 +1516,24 @@ export default function Dashboard() {
   };
 
   const toggleRestaurant = async () => {
+    if (!restaurant) return;
+
     const newIsOpen = !isOpen;
-    setIsOpen(newIsOpen);
-    if (restaurant) {
-      await supabase
-        .from("restaurants")
-        .update({ is_open: newIsOpen })
-        .eq("id", restaurant.id);
+    let untilMs = Date.now() + 86_400_000;
+
+    try {
+      const r = await fetch(`/api/restaurant/hours?restaurantId=${restaurant.id}`);
+      const data = await r.json();
+      if (data.next_transition_at) {
+        untilMs = new Date(data.next_transition_at).getTime();
+      }
+    } catch (e) {
+      console.error("Hours lookup for override failed:", e);
     }
+
+    hoursOverrideRef.current = { value: newIsOpen, untilMs };
+    setIsOpen(newIsOpen);
+    await supabase.from("restaurants").update({ is_open: newIsOpen }).eq("id", restaurant.id);
   };
 
   const handleSignOut = async () => {
