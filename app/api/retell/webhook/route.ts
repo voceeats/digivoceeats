@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendPaymentLink } from "@/lib/sms";
 import { formatPhone } from "@/lib/twilio";
 
 const DEMO_RESTAURANT_ID = "339ad678-297a-4d57-9f4b-a502650829d3";
@@ -178,7 +177,7 @@ export async function POST(request: NextRequest) {
       : null;
 
     const customerName = customData.customer_name || "Voice Customer";
-    const paymentMethod = customData.payment_method || "sms_link";
+    const paymentMethod = customData.payment_method || "pay_code";
     const notes = customData.special_notes || "";
 
     // Parse items — try order_summary first (from Retell extraction)
@@ -219,7 +218,6 @@ export async function POST(request: NextRequest) {
     // Find restaurant by agent ID
     const agentId = body.agent_id || callData.agent_id;
     let restaurantId = DEMO_RESTAURANT_ID;
-    let restaurantName = "Bread & Kabob";
 
     if (agentId) {
       const { data: restaurant } = await supabaseAdmin
@@ -229,7 +227,6 @@ export async function POST(request: NextRequest) {
         .single();
       if (restaurant?.id) {
         restaurantId = restaurant.id;
-        restaurantName = restaurant.name;
       }
     }
 
@@ -249,8 +246,8 @@ export async function POST(request: NextRequest) {
       restaurant_payout: restaurantPayout,
       total,
       payment_method: paymentMethod,
-      payment_status: paymentMethod === "cash" ? "pending" : "awaiting_payment",
-      status: "pending",
+      payment_status: paymentMethod === "cash" ? "pending" : "unpaid",
+      status: paymentMethod === "cash" ? "pending" : "pending_payment",
       source: "voice_ai",
       retell_call_id: callId,
     };
@@ -285,32 +282,11 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Order saved:", order?.order_number);
 
-    // Send SMS payment link
-    if (paymentMethod === "sms_link" && customerPhone) {
-      console.log(`📱 Sending SMS to ${customerPhone}`);
-      const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${order.id}`;
-      const smsSent = await sendPaymentLink({
-        to: formatPhone(customerPhone),
-        restaurantName,
-        orderNumber: order.order_number,
-        total,
-        paymentUrl,
-        expiryMinutes: 30,
-      });
-      if (smsSent) {
-        await supabaseAdmin
-          .from("orders")
-          .update({ payment_link_sent_at: new Date().toISOString() })
-          .eq("id", order.id);
-      }
-    }
-
     return NextResponse.json({
       received: true,
       order_id: order?.id,
       order_number: order?.order_number,
       items_found: items.length,
-      sms_sent: paymentMethod === "sms_link",
     });
 
   } catch (error: any) {

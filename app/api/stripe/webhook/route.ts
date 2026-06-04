@@ -105,10 +105,9 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     .from("orders")
     .update({
       payment_status: "paid",
-      status: "accepted",
+      status: "pending",
       paid_at: new Date().toISOString(),
       stripe_payment_intent_id: piId,
-      accepted_at: new Date().toISOString(),
     })
     .eq("id", orderId);
 
@@ -180,10 +179,9 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
       .from("orders")
       .update({
         payment_status: "paid",
-        status: "accepted",
+        status: "pending",
         paid_at: new Date().toISOString(),
         stripe_payment_intent_id: paymentIntent.id,
-        accepted_at: new Date().toISOString(),
       })
       .eq("id", orderId);
 
@@ -229,10 +227,9 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
     .from("orders")
     .update({
       payment_status: "paid",
-      status: "accepted",
+      status: "pending",
       paid_at: new Date().toISOString(),
       stripe_payment_intent_id: paymentIntent.id,
-      accepted_at: new Date().toISOString(),
     })
     .eq("id", orderId);
 

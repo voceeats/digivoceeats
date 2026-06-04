@@ -19,6 +19,18 @@ const STATUS: Record<string, { label: string; color: string }> = {
   rejected:  { label: "Rejected",   color: "#EF4444" },
 };
 
+/** Restaurant only sees orders after payment (or non–SMS-link flows like cash). */
+function isVisibleToRestaurant(order: { status?: string; payment_status?: string | null }) {
+  return order.payment_status === "paid" || order.status !== "pending_payment";
+}
+
+/** Alert on INSERT (e.g. cash) or when payment completes (handled in UPDATE). */
+function isNewOrderAlert(order: { status?: string; payment_status?: string | null }) {
+  if (order.status !== "pending") return false;
+  if (order.payment_status === "paid") return true;
+  return order.status !== "pending_payment" && order.payment_status !== "unpaid";
+}
+
 function timeAgo(iso: string) {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (d < 60) return `${d}s ago`;
@@ -1386,11 +1398,12 @@ export default function Dashboard() {
         },
         (payload) => {
           const row = payload.new as Record<string, unknown>;
+          if (!isVisibleToRestaurant(row as { status?: string; payment_status?: string | null })) return;
           setOrders((prev) => {
             if (prev.some((o) => o.id === row.id)) return prev;
             return [row as any, ...prev];
           });
-          if (row.status === "pending") {
+          if (isNewOrderAlert(row as { status?: string; payment_status?: string | null })) {
             addOrderAlert(String(row.id), String(row.order_number ?? row.id));
           }
         },
@@ -1405,7 +1418,24 @@ export default function Dashboard() {
         },
         (payload) => {
           const row = payload.new as Record<string, unknown>;
-          setOrders((prev) => prev.map((o) => (o.id === row.id ? { ...o, ...row } : o)));
+          const old = payload.old as Record<string, unknown> | undefined;
+          setOrders((prev) => {
+            const visible = isVisibleToRestaurant(row as { status?: string; payment_status?: string | null });
+            const idx = prev.findIndex((o) => o.id === row.id);
+            if (!visible) {
+              if (idx >= 0) return prev.filter((o) => o.id !== row.id);
+              return prev;
+            }
+            if (idx >= 0) return prev.map((o) => (o.id === row.id ? { ...o, ...row } : o));
+            return [row as any, ...prev];
+          });
+          const becamePaidPending =
+            row.status === "pending" &&
+            row.payment_status === "paid" &&
+            old?.status === "pending_payment";
+          if (becamePaidPending) {
+            addOrderAlert(String(row.id), String(row.order_number ?? row.id));
+          }
         },
       )
       .subscribe();
@@ -1451,7 +1481,7 @@ export default function Dashboard() {
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(100);
-    setOrders(data || []);
+    setOrders((data || []).filter(isVisibleToRestaurant));
     setLoading(false);
   };
 

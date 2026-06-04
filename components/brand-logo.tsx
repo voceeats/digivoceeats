@@ -5,9 +5,18 @@ type BrandLogoProps = {
   priority?: boolean;
   /** Use on light backgrounds so the mark stays readable */
   variant?: "default" | "onLight";
+  /** Display width in px (default: auto) */
+  width?: number;
+  /** Display height in px (default: 40) */
+  height?: number;
 };
 
-export function BrandLogo({ priority = false, variant = "default" }: BrandLogoProps) {
+export function BrandLogo({
+  priority = false,
+  variant = "default",
+  width,
+  height = 40,
+}: BrandLogoProps) {
   const wrapStyle: CSSProperties =
     variant === "onLight"
       ? {
@@ -35,9 +44,9 @@ export function BrandLogo({ priority = false, variant = "default" }: BrandLogoPr
         width={512}
         height={512}
         style={{
-          height: 40,
-          width: "auto",
-          maxWidth: "min(72vw, 280px)",
+          height,
+          width: width ?? "auto",
+          maxWidth: width ? undefined : "min(72vw, 280px)",
           objectFit: "contain",
         }}
         priority={priority}

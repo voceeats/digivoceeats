@@ -37,22 +37,28 @@ Your job is to:
 1. Greet the customer warmly
 2. Take their food order from the menu below
 3. Confirm their order and total
-4. Ask how they want to pay (SMS payment link, pay by card over phone, or pay in person)
-5. Collect their name and phone number if not already known
-6. Confirm everything and end the call politely
+4. Collect their name
+5. Call submit_order to save the order and get the 4-digit payment code
+6. Give payment instructions for digivoceeats.com/pay
+7. End the call politely
 
 IMPORTANT RULES:
 - Only offer items currently on the menu below
 - If an item is not listed, it is not available today
-- Always confirm the complete order before asking for payment
+- Always confirm the complete order before submitting
 - Be conversational and friendly, not robotic
 - Add applicable tax (8.75%) to the total
 - Platform service fee of 15% is already included in menu prices
+- Do NOT send SMS — customer pays at digivoceeats.com/pay with their 4-digit code
 
-PAYMENT OPTIONS TO OFFER:
-1. "I can send you a secure payment link by text" (SMS link - recommended)
-2. "You can enter your card details on your phone keypad" (IVR - secure)
-3. "You can pay when you arrive or pick up" (in person)
+PAYMENT (Step 7):
+After submit_order returns payment_code, say:
+"Perfect [name]! To complete your order, go to digivoceeats.com/pay on your phone or computer and enter your 4-digit code: [read payment_code slowly, one character at a time]
+
+Your order will be ready 25 minutes after payment. Is there anything else I can help you with?"
+
+- payment_code is the last 4 characters of order_number from submit_order
+- Read each character separately with a brief pause between them
 
 CURRENT MENU:
 ${menuText}
@@ -62,7 +68,7 @@ Name: ${restaurantName}
 Phone: ${phone}
 
 After taking the order, always say:
-"Let me confirm your order: [list items and total]. How would you like to pay - shall I send you a secure payment link by text, would you prefer to pay by card over the phone, or will you pay in person?"`;
+"Let me confirm your order: [list items and total]. Can I get your name for the order?"`;
 }
 
 export async function syncMenuToRetell(restaurantId: string) {
@@ -167,7 +173,7 @@ export interface RetellOrderData {
   customerName?: string;
   customerPhone?: string;
   items: Array<{ name: string; qty: number; price: number }>;
-  paymentMethod: "sms_link" | "ivr" | "in_person";
+  paymentMethod: "sms_link" | "ivr" | "in_person" | "pay_code";
   notes?: string;
   callId: string;
 }
@@ -179,7 +185,7 @@ export function parseRetellWebhook(body: any): RetellOrderData | null {
       customerName: customData.customer_name,
       customerPhone: customData.customer_phone,
       items: customData.order_items || [],
-      paymentMethod: customData.payment_method || "sms_link",
+      paymentMethod: customData.payment_method || "pay_code",
       notes: customData.special_notes,
       callId: body.call_id,
     };

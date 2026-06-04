@@ -187,7 +187,7 @@ export default function PayCodeClient({ isSuccess }: { isSuccess: boolean }) {
       >
         <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-            <BrandLogo priority />
+            <BrandLogo priority width={200} height={80} />
           </div>
           <div style={{ fontSize: 64, marginBottom: 20 }}>✅</div>
           <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 12, lineHeight: 1.3 }}>
@@ -228,7 +228,7 @@ export default function PayCodeClient({ isSuccess }: { isSuccess: boolean }) {
     >
       <div style={{ width: "100%", maxWidth: 440 }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-          <BrandLogo priority />
+          <BrandLogo priority width={200} height={80} />
         </div>
 
         <div style={{ textAlign: "center", marginBottom: 32 }}>

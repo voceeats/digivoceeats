@@ -137,22 +137,8 @@ export default function PayOrderClient({
       }}
     >
       <div style={{ width: "100%", maxWidth: 480 }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🎙️</div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 0 }}>
-            <span
-              style={{
-                fontWeight: 900,
-                fontSize: 24,
-                background: "linear-gradient(135deg,#FF6B35,#FF9A6C)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-              }}
-            >
-              Voce
-            </span>
-            <span style={{ fontWeight: 900, fontSize: 24 }}>Eats</span>
-          </div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
+          <BrandLogo priority width={200} height={80} />
         </div>
 
         <div
