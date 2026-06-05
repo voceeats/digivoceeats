@@ -35,7 +35,7 @@ function CodeInput({
   };
 
   const handleChange = (index: number, raw: string) => {
-    const char = raw.replace(/[^a-zA-Z0-9]/g, "").slice(-1).toUpperCase();
+    const char = raw.replace(/\D/g, "").slice(-1);
     setDigit(index, char);
   };
 
@@ -49,9 +49,8 @@ function CodeInput({
     e.preventDefault();
     const pasted = e.clipboardData
       .getData("text")
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .slice(0, 4)
-      .toUpperCase();
+      .replace(/\D/g, "")
+      .slice(0, 4);
     if (!pasted) return;
     const next = ["", "", "", ""];
     pasted.split("").forEach((c, i) => {
@@ -70,7 +69,8 @@ function CodeInput({
             refs.current[i] = el;
           }}
           type="text"
-          inputMode="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           autoComplete="one-time-code"
           maxLength={1}
           value={value[i]}
@@ -78,7 +78,7 @@ function CodeInput({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={i === 0 ? handlePaste : undefined}
-          aria-label={`Order code digit ${i + 1}`}
+          aria-label={`Order code digit ${i + 1} of 4`}
           style={{
             width: 56,
             height: 64,
@@ -91,7 +91,6 @@ function CodeInput({
             color: "#F9FAFB",
             outline: "none",
             fontFamily: "inherit",
-            textTransform: "uppercase",
           }}
         />
       ))}
@@ -115,7 +114,7 @@ export default function PayCodeClient({ isSuccess }: { isSuccess: boolean }) {
 
   const findOrder = async () => {
     if (code.length !== 4) {
-      setError("Please enter all 4 characters of your code.");
+      setError("Please enter all 4 digits of your code.");
       return;
     }
     setLoading(true);

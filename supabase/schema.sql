@@ -134,6 +134,7 @@ create table public.orders (
   total decimal(10,2) not null,
   payment_method text,
   payment_status text default 'pending',
+  payment_code text,
   stripe_payment_intent_id text,
   stripe_payment_link_id text,
   stripe_payment_link_url text,
@@ -151,6 +152,9 @@ create table public.orders (
 
 create unique index if not exists orders_retell_call_id_unique
   on public.orders(retell_call_id) where retell_call_id is not null;
+
+create index if not exists orders_payment_code_idx
+  on public.orders(payment_code) where payment_code is not null;
 
 -- PRINTERS
 create table public.printers (

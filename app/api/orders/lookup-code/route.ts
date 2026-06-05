@@ -9,16 +9,17 @@ function toNum(v: unknown): number {
 export async function POST(request: NextRequest) {
   try {
     const { code } = await request.json();
-    const normalized = String(code || "").trim().toUpperCase();
+    const normalized = String(code || "").trim();
 
-    if (!/^[A-Z0-9]{4}$/.test(normalized)) {
+    if (!/^\d{4}$/.test(normalized)) {
       return NextResponse.json({ error: "Invalid code format" }, { status: 400 });
     }
 
-    const { data: orders, error } = await supabaseAdmin
+    // Primary: match the stored 4-digit numeric payment_code.
+    const { data: codeOrders, error } = await supabaseAdmin
       .from("orders")
       .select("*, restaurants(name)")
-      .ilike("order_number", `%${normalized}`)
+      .eq("payment_code", normalized)
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -26,9 +27,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const matches = (orders || []).filter(
-      (o) => String(o.order_number || "").slice(-4).toUpperCase() === normalized,
-    );
+    let matches = codeOrders || [];
+
+    // Legacy fallback: older orders created before payment_code existed
+    // were looked up by the last 4 chars of order_number.
+    if (matches.length === 0) {
+      const { data: legacyOrders } = await supabaseAdmin
+        .from("orders")
+        .select("*, restaurants(name)")
+        .is("payment_code", null)
+        .ilike("order_number", `%${normalized}`)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      matches = (legacyOrders || []).filter(
+        (o) => String(o.order_number || "").slice(-4) === normalized,
+      );
+    }
 
     if (matches.length === 0) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });

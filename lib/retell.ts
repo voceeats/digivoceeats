@@ -3,17 +3,6 @@ import { supabaseAdmin } from "./supabase";
 const RETELL_API_KEY = process.env.RETELL_API_KEY!;
 const RETELL_BASE_URL = "https://api.retellai.com";
 
-export const NATO_PHONETIC_GUIDE = `NATO PHONETIC ALPHABET (use for payment code letters):
-A = Alpha, B = Bravo, C = Charlie, D = Delta, E = Echo, F = Foxtrot, G = Golf, H = Hotel,
-I = India, J = Juliet, K = Kilo, L = Lima, M = Mike, N = November, O = Oscar, P = Papa,
-Q = Quebec, R = Romeo, S = Sierra, T = Tango, U = Uniform, V = Victor, W = Whiskey,
-X = X-ray, Y = Yankee, Z = Zulu
-
-For digits say: Zero, One, Two, Three, Four, Five, Six, Seven, Eight, Nine
-
-Example — payment_code A3F2: "Alpha ... Three ... Foxtrot ... Two"
-Pause briefly between each character. If asked to repeat, read the code again the same way.`;
-
 export type MenuItemForPrompt = {
   name: string;
   voiceeats_price: number;
@@ -120,10 +109,8 @@ STEP 6 — SUBMIT ORDER:
 
 ==================================================
 STEP 7 — PAYMENT INSTRUCTIONS:
-Say EXACTLY this (NO SMS, NO text message — never mention SMS):
-"Great [name]! Please go to digivoceeats.com/pay or open our app at app.digivoceeats.com and tap Pay. Enter your 4-digit code: [read payment_code using NATO phonetics, one character at a time, with a pause between each]. Your order will be ready 25 minutes after payment!"
-
-${NATO_PHONETIC_GUIDE}
+The payment_code is 4 digits, numbers only. Say EXACTLY this (NO SMS, NO text message — never mention SMS):
+"Great [name]! Please go to digivoceeats.com/pay and enter your 4-digit code: [read each digit slowly with a pause — for example if the code is 2847 say: 2 ... 8 ... 4 ... 7]. Or open our app at app.digivoceeats.com and tap Pay, then enter the same code. Your order will be ready 25 minutes after payment!"
 
 ==================================================
 STEP 8 — ANYTHING ELSE:

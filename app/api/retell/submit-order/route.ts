@@ -24,8 +24,24 @@ function parseOrderSummary(summary: string): Array<{ id: string; name: string; p
   return items;
 }
 
-function paymentCode(orderNumber: string) {
-  return String(orderNumber).slice(-4).toUpperCase();
+/** Generate a random 4-digit numeric code (1000-9999, no leading zero so it's easy to say/hear). */
+function generatePaymentCode(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+/** Generate a 4-digit code that isn't already in use by an active (unpaid) order. */
+async function generateUniquePaymentCode(): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generatePaymentCode();
+    const { data } = await supabaseAdmin
+      .from("orders")
+      .select("id")
+      .eq("payment_code", code)
+      .in("payment_status", ["unpaid", "pending", "pending_payment"])
+      .limit(1);
+    if (!data || data.length === 0) return code;
+  }
+  return generatePaymentCode();
 }
 
 function spokenCode(code: string) {
@@ -35,10 +51,23 @@ function spokenCode(code: string) {
 async function findOrderByRetellCallId(callId: string) {
   const { data } = await supabaseAdmin
     .from("orders")
-    .select("id, order_number")
+    .select("id, order_number, payment_code")
     .eq("retell_call_id", callId)
     .maybeSingle();
   return data;
+}
+
+/** Return the order's stored payment_code, backfilling one if a legacy order has none. */
+async function ensurePaymentCode(order: {
+  id: string;
+  payment_code?: string | null;
+}): Promise<string> {
+  if (order.payment_code && /^\d{4}$/.test(order.payment_code)) {
+    return order.payment_code;
+  }
+  const code = await generateUniquePaymentCode();
+  await supabaseAdmin.from("orders").update({ payment_code: code }).eq("id", order.id);
+  return code;
 }
 
 export async function POST(request: NextRequest) {
@@ -52,7 +81,7 @@ export async function POST(request: NextRequest) {
     if (callId) {
       const existing = await findOrderByRetellCallId(callId);
       if (existing) {
-        const code = paymentCode(existing.order_number);
+        const code = await ensurePaymentCode(existing);
         return NextResponse.json({
           order_id: existing.id,
           order_number: existing.order_number,
@@ -92,6 +121,8 @@ export async function POST(request: NextRequest) {
       if (restaurant?.id) restaurantId = restaurant.id;
     }
 
+    const code = await generateUniquePaymentCode();
+
     const orderData = {
       restaurant_id: restaurantId,
       customer_name: customerName,
@@ -109,24 +140,25 @@ export async function POST(request: NextRequest) {
       status: "pending_payment",
       source: "voice_ai",
       retell_call_id: callId || null,
+      payment_code: code,
     };
 
     const { data: order, error } = await supabaseAdmin
       .from("orders")
       .insert(orderData)
-      .select("id, order_number")
+      .select("id, order_number, payment_code")
       .single();
 
     if (error) {
       if (error.code === "23505" && callId) {
         const existing = await findOrderByRetellCallId(callId);
         if (existing) {
-          const code = paymentCode(existing.order_number);
+          const existingCode = await ensurePaymentCode(existing);
           return NextResponse.json({
             order_id: existing.id,
             order_number: existing.order_number,
-            payment_code: code,
-            payment_code_spoken: spokenCode(code),
+            payment_code: existingCode,
+            payment_code_spoken: spokenCode(existingCode),
           });
         }
       }
@@ -134,7 +166,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const code = paymentCode(order!.order_number);
     console.log(`✅ submit_order: ${order!.order_number} code=${code}`);
 
     return NextResponse.json({
