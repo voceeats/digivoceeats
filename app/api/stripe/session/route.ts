@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     const { data: restaurant } = await supabaseAdmin
       .from("restaurants")
-      .select("id, name, stripe_account_id, stripe_onboarding_complete, email")
+      .select("id, name, email")
       .eq("id", order.restaurant_id)
       .single();
 
@@ -31,25 +31,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
     }
 
-    if (!restaurant.stripe_account_id) {
-      return NextResponse.json(
-        {
-          error: "Restaurant payment not set up yet",
-          needs_stripe: true,
-        },
-        { status: 400 },
-      );
-    }
-
-    if (!restaurant.stripe_onboarding_complete) {
-      return NextResponse.json(
-        {
-          error: "Restaurant still completing payment setup",
-          needs_stripe: true,
-        },
-        { status: 400 },
-      );
-    }
+    // Payments go directly to the platform's main Stripe account.
+    // No Stripe Connect onboarding is required to take a payment.
 
     if (order.payment_status === "paid" || order.payment_status === "cash_collected") {
       return NextResponse.json(
@@ -89,7 +72,6 @@ export async function POST(request: NextRequest) {
 
     const session = await createCheckoutSession(
       checkoutOrder,
-      restaurant.stripe_account_id,
       restaurant.name,
       order.customer_email || undefined,
       successReturn === "pay" ? `${process.env.NEXT_PUBLIC_APP_URL}/pay?success=1` : undefined,

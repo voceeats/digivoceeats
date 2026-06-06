@@ -108,7 +108,9 @@ export async function createPaymentIntent(
   return paymentIntent;
 }
 
-// Create Stripe Checkout Session (easier than Payment Intent)
+// Create Stripe Checkout Session — direct charge to the platform's main
+// Stripe account (no Connect transfer/on_behalf_of). Restaurants do not need
+// to have completed Stripe onboarding for this to work.
 export async function createCheckoutSession(
   order: {
     id: string;
@@ -122,14 +124,11 @@ export async function createCheckoutSession(
     customer_phone?: string;
     customer_name?: string;
   },
-  restaurantStripeAccountId: string,
   restaurantName: string,
   customerEmail?: string,
   successUrl?: string,
   cancelUrl?: string,
 ) {
-  const platformFeeInCents = Math.round(order.total * PLATFORM_FEE_PERCENT * 100);
-
   const lineItems = order.items.map((item) => ({
     price_data: {
       currency: "usd",
@@ -164,10 +163,6 @@ export async function createCheckoutSession(
     cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL}/pay/${order.id}?cancelled=true`,
     customer_email: customerEmail || undefined,
     payment_intent_data: {
-      application_fee_amount: platformFeeInCents,
-      transfer_data: {
-        destination: restaurantStripeAccountId,
-      },
       metadata: {
         order_id: order.id,
         order_number: order.order_number,
