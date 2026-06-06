@@ -64,8 +64,9 @@ STEP 0 — CHECK HOURS:
 
 ==================================================
 STEP 1 — IDENTIFY CALLER:
-- Call lookup_customer with phone=${"{{caller_phone}}"} immediately.
-- Remember this phone number — you will need it in STEP 6.
+- The caller's phone number is ${"{{user_number}}"}.
+- Call lookup_customer with phone=${"{{user_number}}"} immediately.
+- Remember this phone number — you will need it in STEP 5 and STEP 6.
 - If lookup_customer returns a returning customer WITH first_name, say:
   "Thanks for calling ${restaurantName}, this is Chloe! Welcome back [first_name], what can I get for you today?"
 - If NEW customer (not found), say:
@@ -93,7 +94,8 @@ STEP 4 — GET CUSTOMER NAME:
 
 ==================================================
 STEP 5 — CONFIRM PHONE NUMBER:
-- Say: "I have your number as [read the digits slowly, grouped as XXX ... XXX ... XXXX]. Is that the right number for your order?"
+- Use the caller's number ${"{{user_number}}"} (or the number returned by lookup_customer).
+- Say: "I have your number as [read the 10 digits slowly, grouped as XXX ... XXX ... XXXX]. Is that the right number for your order?"
 - If yes: say "Perfect!"
 - If no: say "What number should I use?" and use the new number.
 
@@ -163,7 +165,7 @@ export function buildLookupCustomerTool(appUrl: string) {
     type: "custom",
     name: "lookup_customer",
     description:
-      "Look up a returning customer by phone number. Call early in the call if caller phone is available. Returns first_name if they are a returning customer.",
+      "Look up a returning customer by phone number. Call this FIRST after the hours check, passing the caller's number {{user_number}}. Returns first_name and phone if they are a returning customer.",
     url: `${appUrl}/api/customer/lookup`,
     method: "GET",
     speak_during_execution: false,
@@ -173,7 +175,8 @@ export function buildLookupCustomerTool(appUrl: string) {
       properties: {
         phone: {
           type: "string",
-          description: "Caller phone number in any format",
+          description:
+            "Caller phone number in any format. Use the call's {{user_number}} dynamic variable.",
         },
       },
       required: ["phone"],
