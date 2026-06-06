@@ -73,10 +73,22 @@ async function ensurePaymentCode(order: {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log("🔔 submit_order RAW body:", JSON.stringify(body).slice(0, 2000));
+
     const args = body.args || body;
     const call = body.call || {};
-    const callId = call.call_id as string | undefined;
+    const callId = (call.call_id || body.call_id) as string | undefined;
     const agentId = (call.agent_id || body.agent_id) as string | undefined;
+
+    console.log("🔔 submit_order parsed:", {
+      callId,
+      agentId,
+      customer_name: args.customer_name,
+      customer_phone: args.customer_phone,
+      order_summary: args.order_summary,
+      order_total: args.order_total,
+      special_notes: args.special_notes,
+    });
 
     if (callId) {
       const existing = await findOrderByRetellCallId(callId);
@@ -113,13 +125,23 @@ export async function POST(request: NextRequest) {
 
     let restaurantId = DEMO_RESTAURANT_ID;
     if (agentId) {
-      const { data: restaurant } = await supabaseAdmin
+      const { data: restaurant, error: restaurantError } = await supabaseAdmin
         .from("restaurants")
         .select("id")
         .eq("retell_agent_id", agentId)
-        .single();
-      if (restaurant?.id) restaurantId = restaurant.id;
+        .maybeSingle();
+      if (restaurantError) {
+        console.error("submit_order restaurant lookup error:", restaurantError.message);
+      }
+      if (restaurant?.id) {
+        restaurantId = restaurant.id;
+      } else {
+        console.warn(
+          `⚠️ submit_order: no restaurant for agent ${agentId} — falling back to demo ${DEMO_RESTAURANT_ID}`,
+        );
+      }
     }
+    console.log("🏪 submit_order using restaurant_id:", restaurantId);
 
     const code = await generateUniquePaymentCode();
 
@@ -143,11 +165,33 @@ export async function POST(request: NextRequest) {
       payment_code: code,
     };
 
-    const { data: order, error } = await supabaseAdmin
+    let { data: order, error } = await supabaseAdmin
       .from("orders")
       .insert(orderData)
       .select("id, order_number, payment_code")
       .single();
+
+    // Graceful fallback: if the payment_code column hasn't been migrated yet,
+    // the insert fails with a schema error. Retry without it so orders still
+    // submit, and log a loud reminder to run the migration.
+    const missingPaymentCodeColumn =
+      error &&
+      (error.code === "PGRST204" || /payment_code/i.test(error.message || "")) &&
+      /payment_code/i.test(`${error.message} ${error.details ?? ""}`);
+    if (missingPaymentCodeColumn) {
+      console.error(
+        "🚨 submit_order: 'payment_code' column missing. Run migration " +
+          "supabase/migrations/20260605_orders_payment_code.sql against your DB. " +
+          "Inserting WITHOUT payment_code as a fallback (the /pay code lookup will not work until migrated).",
+      );
+      const fallbackData = { ...orderData };
+      delete (fallbackData as { payment_code?: string }).payment_code;
+      ({ data: order, error } = await supabaseAdmin
+        .from("orders")
+        .insert(fallbackData)
+        .select("id, order_number")
+        .single());
+    }
 
     if (error) {
       if (error.code === "23505" && callId) {
@@ -162,8 +206,16 @@ export async function POST(request: NextRequest) {
           });
         }
       }
-      console.error("submit_order error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("❌ submit_order insert error:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      return NextResponse.json(
+        { error: error.message, code: error.code, details: error.details },
+        { status: 500 },
+      );
     }
 
     console.log(`✅ submit_order: ${order!.order_number} code=${code}`);
