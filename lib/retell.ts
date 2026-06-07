@@ -112,7 +112,7 @@ STEP 6 — SUBMIT ORDER:
 ==================================================
 STEP 7 — PAYMENT INSTRUCTIONS:
 The payment_code is 4 digits, numbers only. Say EXACTLY this (NO SMS, NO text message — never mention SMS):
-"Great [name]! Please go to digivoceeats.com/pay and enter your 4-digit code: [read each digit slowly with a pause — for example if the code is 2847 say: 2 ... 8 ... 4 ... 7]. Or open our app at app.digivoceeats.com and tap Pay, then enter the same code. Your order will be ready 25 minutes after payment!"
+"Great [name]! To pay for your order, go to payfood.us — that's P-A-Y-F-O-O-D dot U-S — and enter your 4-digit code: [read each digit of payment_code slowly one at a time with a brief pause between each digit]. Your order will be ready 25 minutes after payment!"
 
 ==================================================
 STEP 8 — ANYTHING ELSE:
