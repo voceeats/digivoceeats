@@ -11,6 +11,22 @@ const nextConfig = {
       { protocol: "https", hostname: "**.supabase.co" },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/",
+        has: [{ type: "host", value: "payfood.us" }],
+        destination: "https://www.digivoceeats.com/pay",
+        permanent: true,
+      },
+      {
+        source: "/",
+        has: [{ type: "host", value: "www.payfood.us" }],
+        destination: "https://www.digivoceeats.com/pay",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
