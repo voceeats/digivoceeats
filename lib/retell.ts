@@ -136,6 +136,10 @@ CRITICAL RULES:
 - After greeting, immediately listen for customer response.
 - If customer says "hello" or "hi" respond instantly with "Yes! What can I get for you today?"
 - Never pause or wait more than 1 second before responding.
+- IF CUSTOMER SAYS they forgot their code or asks for their order code:
+  - Call get_unpaid_order with phone=${"{{user_number}}"}.
+  - If order found: say "I found your order! Your 4-digit code is: [read payment_code slowly one digit at a time]. Go to payfood.us and enter this code to complete payment."
+  - If no order found: say "I don't see any pending orders for your number. Would you like to place a new order?"
 
 ==================================================
 CURRENT MENU:
@@ -170,6 +174,30 @@ export function buildLookupCustomerTool(appUrl: string) {
     description:
       "Look up a returning customer by phone number. Call this FIRST after the hours check, passing the caller's number {{user_number}}. Returns first_name and phone if they are a returning customer.",
     url: `${appUrl}/api/customer/lookup`,
+    method: "GET",
+    speak_during_execution: false,
+    speak_after_execution: false,
+    parameters: {
+      type: "object",
+      properties: {
+        phone: {
+          type: "string",
+          description:
+            "Caller phone number in any format. Use the call's {{user_number}} dynamic variable.",
+        },
+      },
+      required: ["phone"],
+    },
+  };
+}
+
+export function buildGetUnpaidOrderTool(appUrl: string) {
+  return {
+    type: "custom",
+    name: "get_unpaid_order",
+    description:
+      "Look up customer's unpaid order by phone number to retrieve their payment code if they forgot it. Returns payment_code, order_number, total, and items summary for orders placed in the last 2 hours.",
+    url: `${appUrl}/api/order/lookup-by-phone`,
     method: "GET",
     speak_during_execution: false,
     speak_after_execution: false,
@@ -236,6 +264,7 @@ export function mergeRetellGeneralTools(
   const reserved = new Set([
     "check_restaurant_hours",
     "lookup_customer",
+    "get_unpaid_order",
     "submit_order",
   ]);
   const tools = (Array.isArray(existing) ? existing : []).filter(
@@ -245,6 +274,7 @@ export function mergeRetellGeneralTools(
   tools.push(
     buildCheckHoursTool(appUrl, restaurantId),
     buildLookupCustomerTool(appUrl),
+    buildGetUnpaidOrderTool(appUrl),
     buildSubmitOrderTool(appUrl),
   );
 
