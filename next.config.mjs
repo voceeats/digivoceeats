@@ -14,13 +14,13 @@ const nextConfig = {
   async redirects() {
     return [
       {
-        source: "/",
+        source: "/:path*",
         has: [{ type: "host", value: "payfood.us" }],
         destination: "https://www.digivoceeats.com/pay",
         permanent: true,
       },
       {
-        source: "/",
+        source: "/:path*",
         has: [{ type: "host", value: "www.payfood.us" }],
         destination: "https://www.digivoceeats.com/pay",
         permanent: true,
