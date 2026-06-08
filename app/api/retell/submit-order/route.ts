@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { linkCallToOrder } from "@/lib/call-tracking";
 
 const DEMO_RESTAURANT_ID = "339ad678-297a-4d57-9f4b-a502650829d3";
 
@@ -219,6 +220,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ submit_order: ${order!.order_number} payment_code=${code}`);
+
+    if (callId && order?.id) {
+      await linkCallToOrder(callId, order.id, restaurantId);
+    }
 
     return NextResponse.json({
       order_id: order!.id,

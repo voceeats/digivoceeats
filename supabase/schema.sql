@@ -156,6 +156,22 @@ create unique index if not exists orders_retell_call_id_unique
 create index if not exists orders_payment_code_idx
   on public.orders(payment_code) where payment_code is not null;
 
+-- CALLS (voice analytics)
+create table if not exists public.calls (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid references public.restaurants(id) on delete cascade,
+  retell_call_id text unique,
+  caller_phone text,
+  call_duration_seconds integer,
+  call_status text default 'completed',
+  order_placed boolean default false,
+  order_id uuid references public.orders(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+create index if not exists calls_restaurant_id_idx on public.calls(restaurant_id);
+create index if not exists calls_created_at_idx on public.calls(created_at);
+
 -- PRINTERS
 create table public.printers (
   id uuid primary key default gen_random_uuid(),

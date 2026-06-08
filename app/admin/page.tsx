@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
@@ -15,12 +16,46 @@ const S = {
   btn: (color: string, outline = false) => ({ background: outline ? `${color}15` : color, color: outline ? color : "#fff", border: outline ? `1px solid ${color}40` : "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "sans-serif" } as React.CSSProperties),
 };
 
+type AdminAnalytics = {
+  platform: {
+    totalRevenue: number;
+    totalCommission: number;
+    restaurantCount: number;
+    metrics: {
+      calls: { total: number; month: number; answerRate: number };
+      orders: { total: number; month: number };
+    };
+  };
+  revenueByRestaurant: Array<{
+    restaurantId: string;
+    name: string;
+    orders: number;
+    revenue: number;
+    commission: number;
+    calls: number;
+  }>;
+  topRestaurants: Array<{
+    name: string;
+    commission: number;
+    revenue: number;
+    orders: number;
+  }>;
+  monthlyCommissionReport: {
+    year: number;
+    month: number;
+    revenue: { total: number; platformFee: number; restaurantPayout: number };
+    orders: { total: number };
+    calls: { total: number };
+  };
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [adminAnalytics, setAdminAnalytics] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "restaurants" | "revenue">("overview");
+  const [tab, setTab] = useState<"overview" | "restaurants" | "revenue" | "analytics">("overview");
 
   useEffect(() => {
     checkAdminAuth();
@@ -38,14 +73,20 @@ export default function AdminPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const { data: rests } = await supabase.from("restaurants").select("*").order("created_at", { ascending: false });
-    const { data: orders } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+    const [{ data: rests }, { data: orders }, analyticsRes] = await Promise.all([
+      supabase.from("restaurants").select("*").order("created_at", { ascending: false }),
+      supabase.from("orders").select("*").order("created_at", { ascending: false }),
+      fetch("/api/analytics/admin"),
+    ]);
     setRestaurants(rests || []);
     setAllOrders(orders || []);
+    if (analyticsRes.ok) {
+      setAdminAnalytics(await analyticsRes.json());
+    }
     setLoading(false);
   };
 
-  const totalRevenue = allOrders.reduce((s, o) => s + (o.platform_fee || 0), 0);
+  const totalRevenue = adminAnalytics?.platform.totalCommission ?? allOrders.reduce((s, o) => s + (o.platform_fee || 0), 0);
   const todayOrders = allOrders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
   const todayRevenue = todayOrders.reduce((s, o) => s + (o.platform_fee || 0), 0);
 
@@ -72,13 +113,12 @@ export default function AdminPage() {
       </header>
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
-        {/* Platform Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 28 }}>
           {[
             { icon: "🏪", label: "Restaurants", value: restaurants.length, color: "#6366F1", sub: "Active" },
             { icon: "🛍️", label: "Total Orders", value: allOrders.length, color: "#F59E0B", sub: "All time" },
-            { icon: "💰", label: "Today's Revenue", value: `$${todayRevenue.toFixed(0)}`, color: "#00C896", sub: "Your 15%" },
-            { icon: "📈", label: "Total Revenue", value: `$${totalRevenue.toFixed(0)}`, color: "#FF6B35", sub: "Your 15% cut" },
+            { icon: "💰", label: "Today's Commission", value: `$${todayRevenue.toFixed(0)}`, color: "#00C896", sub: "Your 15%" },
+            { icon: "📈", label: "Total Commission", value: `$${totalRevenue.toFixed(0)}`, color: "#FF6B35", sub: "Platform 15%" },
           ].map(s => (
             <div key={s.label} style={{ ...S.card, padding: "20px 22px", display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ width: 50, height: 50, borderRadius: 14, background: `${s.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, border: `1px solid ${s.color}25`, flexShrink: 0 }}>
@@ -93,10 +133,10 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "rgba(255,255,255,0.03)", padding: 5, borderRadius: 14, border: "1px solid rgba(255,255,255,0.06)", width: "fit-content" }}>
           {[
             { id: "overview", label: "Overview", icon: "📊" },
+            { id: "analytics", label: "Analytics", icon: "📈" },
             { id: "restaurants", label: "Restaurants", icon: "🏪" },
             { id: "revenue", label: "Revenue", icon: "💰" },
           ].map(t => (
@@ -106,7 +146,77 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Overview Tab */}
+        {tab === "analytics" && adminAnalytics && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+              {[
+                ["Total Platform Revenue", `$${adminAnalytics.platform.totalRevenue.toFixed(2)}`, "#F9FAFB"],
+                ["Total Commission (15%)", `$${adminAnalytics.platform.totalCommission.toFixed(2)}`, "#FF6B35"],
+                ["Calls This Month", adminAnalytics.platform.metrics.calls.month, "#6366F1"],
+                ["Answer Rate", `${adminAnalytics.platform.metrics.calls.answerRate}%`, "#00C896"],
+              ].map(([label, val, color]) => (
+                <div key={String(label)} style={{ ...S.card, padding: 22 }}>
+                  <div style={{ color: "#6B7280", fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>{label}</div>
+                  <div style={{ color: color as string, fontSize: 28, fontWeight: 900 }}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ ...S.card, padding: 28 }}>
+              <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 16 }}>
+                Monthly Commission Report — {adminAnalytics.monthlyCommissionReport.month}/{adminAnalytics.monthlyCommissionReport.year}
+              </h3>
+              {[
+                ["Total Orders", adminAnalytics.monthlyCommissionReport.orders.total],
+                ["Total Calls", adminAnalytics.monthlyCommissionReport.calls.total],
+                ["Gross Revenue", `$${adminAnalytics.monthlyCommissionReport.revenue.total.toFixed(2)}`],
+                ["Platform Commission", `$${adminAnalytics.monthlyCommissionReport.revenue.platformFee.toFixed(2)}`],
+                ["Restaurant Payouts", `$${adminAnalytics.monthlyCommissionReport.revenue.restaurantPayout.toFixed(2)}`],
+              ].map(([label, val]) => (
+                <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                  <span style={{ color: "#9CA3AF" }}>{label}</span>
+                  <span style={{ color: "#F9FAFB", fontWeight: 800 }}>{val}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ ...S.card, padding: 28 }}>
+                <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 16 }}>🏆 Top Performing Restaurants</h3>
+                {adminAnalytics.topRestaurants.map((rest, i) => (
+                  <div key={rest.name} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div>
+                      <span style={{ color: "#FF6B35", fontWeight: 800, marginRight: 8 }}>#{i + 1}</span>
+                      <span style={{ color: "#F9FAFB", fontWeight: 600 }}>{rest.name}</span>
+                      <div style={{ color: "#6B7280", fontSize: 12, marginTop: 2 }}>{rest.orders} orders</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "#FF6B35", fontWeight: 800 }}>${rest.commission.toFixed(2)}</div>
+                      <div style={{ color: "#6B7280", fontSize: 12 }}>${rest.revenue.toFixed(2)} gross</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ ...S.card, padding: 28 }}>
+                <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 16 }}>💰 Revenue by Restaurant</h3>
+                {adminAnalytics.revenueByRestaurant.map((rest) => (
+                  <div key={rest.restaurantId} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div>
+                      <div style={{ color: "#F9FAFB", fontWeight: 600 }}>{rest.name}</div>
+                      <div style={{ color: "#6B7280", fontSize: 12 }}>{rest.orders} orders · {rest.calls} calls</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "#FF6B35", fontWeight: 800 }}>${rest.commission.toFixed(2)}</div>
+                      <div style={{ color: "#6B7280", fontSize: 12 }}>fee</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {tab === "overview" && (
           <div>
             <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 16 }}>Recent Orders — All Restaurants</h3>
@@ -130,7 +240,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Restaurants Tab */}
         {tab === "restaurants" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -176,7 +285,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Revenue Tab */}
         {tab === "revenue" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             <div style={{ ...S.card, padding: 28 }}>

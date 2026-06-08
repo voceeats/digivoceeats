@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { formatPhone } from "@/lib/twilio";
+import {
+  deriveCallStatus,
+  extractCallDurationSeconds,
+  linkCallToOrder,
+  resolveRestaurantIdFromAgent,
+  upsertCallRecord,
+} from "@/lib/call-tracking";
 
 const DEMO_RESTAURANT_ID = "339ad678-297a-4d57-9f4b-a502650829d3";
 
@@ -71,19 +78,15 @@ function parseOrderSummary(summary: string): Array<{ id: string; name: string; p
   const items: Array<{ id: string; name: string; price: number; qty: number }> = [];
   if (!summary) return items;
 
-  // Parse format: "Item Name, qty, $price; Item Name, qty, $price"
-  const parts = summary.split(";");
-  parts.forEach((part, index) => {
+  summary.split(";").forEach((part, index) => {
     const trimmed = part.trim();
     if (!trimmed) return;
-
-    // Match: "Kubideh Kabob Platter, 1, $14.89"
     const match = trimmed.match(/^(.+),\s*(\d+),\s*\$?([\d.]+)$/);
     if (match) {
       items.push({
         id: String(index + 1),
         name: match[1].trim(),
-        qty: parseInt(match[2]),
+        qty: parseInt(match[2], 10),
         price: parseFloat(match[3]),
       });
     }
@@ -100,9 +103,9 @@ function parseOrderFromTranscript(transcript: string): Array<{ id: string; name:
 
   for (const [key, price] of sorted) {
     if (lower.includes(key) && !addedPrices.has(price)) {
-      const qtyMatch = lower.match(new RegExp(`(\\d+)\\s*${key.split(' ')[0]}`));
-      const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-      const name = key.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      const qtyMatch = lower.match(new RegExp(`(\\d+)\\s*${key.split(" ")[0]}`));
+      const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+      const name = key.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
       items.push({ id: String(items.length + 1), name, price, qty });
       addedPrices.add(price);
     }
@@ -129,12 +132,49 @@ function duplicateOrderResponse(existing: { id: string; order_number: string }, 
   });
 }
 
+async function trackCall(params: {
+  callId?: string;
+  callData: Record<string, unknown>;
+  eventType: string;
+  agentId?: string | null;
+  restaurantId?: string;
+  existingOrder?: { id: string; order_number: string } | null;
+}) {
+  if (!params.callId) return params.restaurantId || DEMO_RESTAURANT_ID;
+
+  const restaurantId =
+    params.restaurantId ||
+    (await resolveRestaurantIdFromAgent(params.agentId));
+
+  const callerRaw = params.callData.from_number ?? params.callData.from;
+  const callerPhone = callerRaw ? formatPhone(String(callerRaw)) : null;
+  const duration = extractCallDurationSeconds(params.callData);
+  const orderPlaced = !!params.existingOrder;
+
+  await upsertCallRecord({
+    retellCallId: params.callId,
+    restaurantId,
+    callerPhone,
+    callDurationSeconds: duration,
+    callStatus: deriveCallStatus({
+      orderPlaced,
+      disconnectionReason: params.callData.disconnection_reason as string | undefined,
+      eventType: params.eventType,
+    }),
+    orderPlaced,
+    orderId: params.existingOrder?.id ?? null,
+  });
+
+  return restaurantId;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const eventType = body.event_type || body.event;
-    const callData = body.call || body;
+    const callData = (body.call || body) as Record<string, unknown>;
     const callId = (callData.call_id || body.call_id) as string | undefined;
+    const agentId = (body.agent_id || callData.agent_id) as string | undefined;
 
     console.log("📞 Retell webhook received:", eventType, "call_id:", callId);
 
@@ -142,100 +182,68 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, event: eventType });
     }
 
-    // Idempotency: one order per call — submit_order may have already created it.
-    if (callId) {
-      const existing = await findOrderByRetellCallId(callId);
-      if (existing) {
-        return duplicateOrderResponse(existing, callId);
-      }
-    }
+    const existingOrder = callId ? await findOrderByRetellCallId(callId) : null;
+    const restaurantId = await trackCall({
+      callId,
+      callData,
+      eventType,
+      agentId,
+      existingOrder,
+    });
 
     if (eventType === "call_ended") {
-      console.log("⏭️ call_ended — no order yet, waiting for call_analyzed or submit_order:", callId);
-      return NextResponse.json({ received: true, skipped: "awaiting call_analyzed" });
+      console.log("📞 call_ended tracked:", callId, "order_placed:", !!existingOrder);
+      return NextResponse.json({ received: true, call_tracked: true, order_placed: !!existingOrder });
     }
 
-    // Only call_analyzed may create an order below (and only if none exists for this call_id).
-    const customData = callData.custom_data ||
-                       body.custom_data ||
-                       callData.call_analysis ||
-                       body.call_analysis ||
-                       {};
+    if (callId && existingOrder) {
+      await linkCallToOrder(callId, existingOrder.id, restaurantId);
+      return duplicateOrderResponse(existingOrder, callId);
+    }
 
-    console.log("📋 Custom data:", JSON.stringify(customData));
+    const customData = (callData.custom_data ||
+      body.custom_data ||
+      callData.call_analysis ||
+      body.call_analysis ||
+      {}) as Record<string, string>;
 
-    const transcript = callData.transcript || body.transcript || "";
-    const callerPhone = callData.from_number || body.from_number || null;
-
-    // Extract customer info from custom data first, then transcript
-    const customerPhone = customData.customer_phone
+    const transcript = String(callData.transcript || body.transcript || "");
+    const callerPhone = customData.customer_phone
       ? formatPhone(customData.customer_phone)
-      : callerPhone
-      ? formatPhone(callerPhone)
-      : null;
+      : callData.from_number
+        ? formatPhone(String(callData.from_number))
+        : null;
 
     const customerName = customData.customer_name || "Voice Customer";
     const paymentMethod = customData.payment_method || "pay_code";
     const notes = customData.special_notes || "";
 
-    // Parse items — try order_summary first (from Retell extraction)
-    // then fall back to transcript parsing
     let items: Array<{ id: string; name: string; price: number; qty: number }> = [];
 
     if (customData.order_summary) {
-      console.log("📝 Parsing from order_summary:", customData.order_summary);
       items = parseOrderSummary(customData.order_summary);
     }
-
     if (!items.length && transcript) {
-      console.log("📝 Falling back to transcript parsing");
       items = parseOrderFromTranscript(transcript);
     }
 
-    console.log("🛒 Items found:", JSON.stringify(items));
-
-    // Calculate totals
     let subtotal = 0;
     if (customData.order_total && parseFloat(customData.order_total) > 0) {
-      // Use Retell's calculated total (includes tax already)
-      const totalWithTax = parseFloat(customData.order_total);
-      // Back-calculate subtotal from total (total = subtotal * 1.06)
-      subtotal = parseFloat((totalWithTax / 1.06).toFixed(2));
+      subtotal = parseFloat((parseFloat(customData.order_total) / 1.06).toFixed(2));
     } else {
-      subtotal = parseFloat(
-        items.reduce((sum, item) => sum + (item.price * item.qty), 0).toFixed(2)
-      );
+      subtotal = parseFloat(items.reduce((sum, item) => sum + item.price * item.qty, 0).toFixed(2));
     }
 
     const tax = parseFloat((subtotal * 0.06).toFixed(2));
     const total = parseFloat((subtotal + tax).toFixed(2));
-    // Platform fee is the 15% already built into voiceeats_price
-    const platformFee = parseFloat((subtotal - (subtotal / 1.15)).toFixed(2));
+    const platformFee = parseFloat((subtotal - subtotal / 1.15).toFixed(2));
     const restaurantPayout = parseFloat((subtotal / 1.15).toFixed(2));
 
-    // Find restaurant by agent ID
-    const agentId = body.agent_id || callData.agent_id;
-    let restaurantId = DEMO_RESTAURANT_ID;
-
-    if (agentId) {
-      const { data: restaurant } = await supabaseAdmin
-        .from("restaurants")
-        .select("id, name")
-        .eq("retell_agent_id", agentId)
-        .single();
-      if (restaurant?.id) {
-        restaurantId = restaurant.id;
-      }
-    }
-
-    // Save order
     const orderData = {
       restaurant_id: restaurantId,
       customer_name: customerName,
-      customer_phone: customerPhone,
-      items: items.length > 0
-        ? items
-        : [{ id: "1", name: "Voice Order", qty: 1, price: subtotal }],
+      customer_phone: callerPhone,
+      items: items.length > 0 ? items : [{ id: "1", name: "Voice Order", qty: 1, price: subtotal }],
       notes: notes || "",
       subtotal,
       tax,
@@ -250,12 +258,10 @@ export async function POST(request: NextRequest) {
       retell_call_id: callId,
     };
 
-    console.log("💾 Saving order:", JSON.stringify(orderData, null, 2));
-
-    // Re-check immediately before insert (guards against race between webhooks)
     if (callId) {
       const existing = await findOrderByRetellCallId(callId);
       if (existing) {
+        await linkCallToOrder(callId, existing.id, restaurantId);
         return duplicateOrderResponse(existing, callId);
       }
     }
@@ -267,15 +273,19 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      // Unique index on retell_call_id — treat as duplicate, not failure
       if (error.code === "23505" && callId) {
         const existing = await findOrderByRetellCallId(callId);
         if (existing) {
+          await linkCallToOrder(callId, existing.id, restaurantId);
           return duplicateOrderResponse(existing, callId);
         }
       }
       console.error("❌ Order save error:", error);
       return NextResponse.json({ received: true, error: error.message });
+    }
+
+    if (callId && order?.id) {
+      await linkCallToOrder(callId, order.id, restaurantId);
     }
 
     console.log("✅ Order saved:", order?.order_number);
@@ -286,13 +296,13 @@ export async function POST(request: NextRequest) {
       order_number: order?.order_number,
       items_found: items.length,
     });
-
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Webhook error";
     console.error("❌ Webhook error:", error);
-    return NextResponse.json({ received: true, error: error.message });
+    return NextResponse.json({ received: true, error: msg });
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   return NextResponse.json({ status: "DigiVoceEats Retell webhook active - Bread & Kabob" });
 }

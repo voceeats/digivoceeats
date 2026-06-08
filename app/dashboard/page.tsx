@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
 import { PaymentQrSection } from "@/components/payment-qr-section";
+import { AnalyticsTab } from "@/components/analytics-tab";
 import { detectAndPrint, browserPrint, type PrintOrder } from "@/lib/print";
 
 const supabase = createClient(
@@ -1961,41 +1962,8 @@ export default function Dashboard() {
         )}
 
         {/* Analytics Tab */}
-        {tab === "analytics" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            {[
-              {
-                title: "💰 Revenue Breakdown",
-                rows: [
-                  ["Gross Revenue", `$${orders.reduce((s, o) => s + (o.total || 0), 0).toFixed(2)}`, "#F9FAFB"],
-                  ["Your Earnings (85%)", `$${orders.reduce((s, o) => s + (o.restaurant_payout || 0), 0).toFixed(2)}`, "#00C896"],
-                  ["DigiVoceEats Fee (15%)", `$${orders.reduce((s, o) => s + (o.platform_fee || 0), 0).toFixed(2)}`, "#FF6B35"],
-                  ["Tax Collected", `$${orders.reduce((s, o) => s + (o.tax || 0), 0).toFixed(2)}`, "#9CA3AF"],
-                ],
-              },
-              {
-                title: "📊 Order Stats",
-                rows: [
-                  ["Total Orders", orders.length, "#F9FAFB"],
-                  ["Completed", orders.filter(o => o.status === "completed").length, "#00C896"],
-                  ["New Orders", orders.filter(isNewPaidOrder).length, "#00C896"],
-                  ["Awaiting Payment", orders.filter(isAwaitingPayment).length, "#F59E0B"],
-                  ["Rejected", orders.filter(o => o.status === "rejected").length, "#EF4444"],
-                  ["Voice AI Orders", orders.filter(o => o.source === "voice_ai").length, "#6366F1"],
-                ],
-              },
-            ].map(section => (
-              <div key={section.title} style={{ ...S.card, padding: 28 }}>
-                <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 20 }}>{section.title}</h3>
-                {section.rows.map(([label, val, color]: any) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                    <span style={{ color: "#9CA3AF", fontSize: 14 }}>{label}</span>
-                    <span style={{ color, fontWeight: 800, fontSize: 16 }}>{val}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+        {tab === "analytics" && restaurant && (
+          <AnalyticsTab restaurantId={restaurant.id} />
         )}
       </main>
     </div>
