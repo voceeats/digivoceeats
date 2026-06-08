@@ -1452,20 +1452,22 @@ export default function Dashboard() {
   useEffect(() => {
     if (pending === 0) {
       setSoundActive(false);
+      if (bellRepeatRef.current) {
+        clearInterval(bellRepeatRef.current);
+        bellRepeatRef.current = null;
+      }
     }
   }, [pending]);
 
   // Ring every 8s while unacknowledged paid pending orders exist
   useEffect(() => {
-    if (pending === 0) {
+    if (pending === 0 || !soundActive) {
       if (bellRepeatRef.current) {
         clearInterval(bellRepeatRef.current);
         bellRepeatRef.current = null;
       }
       return;
     }
-
-    if (!soundActive) return;
 
     void ringBell();
     if (bellRepeatRef.current) clearInterval(bellRepeatRef.current);
@@ -1647,7 +1649,18 @@ export default function Dashboard() {
   };
 
   const updateOrder = (id: string, status: string) => {
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    const statusToPayment: Record<string, string> = {
+      accepted: "paid",
+      completed: "paid",
+      rejected: "paid",
+    };
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === id
+          ? { ...o, status, payment_status: statusToPayment[status] ?? o.payment_status }
+          : o
+      )
+    );
   };
 
   const toggleRestaurant = async () => {
