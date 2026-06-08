@@ -1,14 +1,12 @@
 import { MonthlyReportData } from "@/lib/email/monthly-report-template";
 import { supabaseAdmin } from "@/lib/supabase";
 
-/** Returns the first and last day of a given month as ISO strings */
 export function getMonthRange(year: number, month: number) {
   const start = new Date(Date.UTC(year, month - 1, 1)).toISOString();
   const end = new Date(Date.UTC(year, month, 1)).toISOString();
   return { start, end };
 }
 
-/** Human-readable month label, e.g. "May 2025" */
 export function formatMonthLabel(year: number, month: number) {
   return new Date(year, month - 1, 1).toLocaleDateString("en-US", {
     month: "long",
@@ -32,17 +30,6 @@ function formatHour(h: number) {
   return `${h - 12} PM`;
 }
 
-type OrderRow = {
-  id: string;
-  status: string;
-  payment_status: string;
-  total: number;
-  restaurant_payout: number;
-  platform_fee: number;
-  created_at: string;
-  items: Array<{ name: string; price: number; qty: number }> | null;
-};
-
 export async function buildReportData(
   restaurantId: string,
   year: number,
@@ -60,8 +47,6 @@ export async function buildReportData(
     throw new Error(`Restaurant not found: ${restErr?.message}`);
   }
 
-  const ownerName = await resolveOwnerName(restaurant);
-
   const { data: orders, error: ordErr } = await supabaseAdmin
     .from("orders")
     .select("id, status, payment_status, total, restaurant_payout, platform_fee, created_at, items")
@@ -71,24 +56,26 @@ export async function buildReportData(
 
   if (ordErr) throw new Error(`Orders fetch failed: ${ordErr.message}`);
 
-  const allOrders = (orders ?? []) as OrderRow[];
+  const allOrders = orders ?? [];
   const paidOrders = allOrders.filter((o) => o.payment_status === "paid");
   const completedOrders = allOrders.filter((o) => o.status === "completed").length;
   const rejectedOrders = allOrders.filter((o) => o.status === "rejected").length;
 
   const totalRevenue = paidOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-  const platformFee = paidOrders.reduce((sum, o) => sum + (Number(o.platform_fee) || 0), 0)
-    || totalRevenue * 0.15;
-  const restaurantEarnings = paidOrders.reduce((sum, o) => sum + (Number(o.restaurant_payout) || 0), 0)
-    || totalRevenue * 0.85;
+  const platformFee =
+    paidOrders.reduce((sum, o) => sum + (Number(o.platform_fee) || 0), 0) || totalRevenue * 0.15;
+  const restaurantEarnings =
+    paidOrders.reduce((sum, o) => sum + (Number(o.restaurant_payout) || 0), 0) || totalRevenue * 0.85;
   const avgOrderValue = paidOrders.length > 0 ? totalRevenue / paidOrders.length : 0;
 
   const itemMap: Record<string, { count: number; revenue: number }> = {};
+
   for (const order of paidOrders) {
-    const items = Array.isArray(order.items) ? order.items : [];
+    const items: { name: string; price: number; qty: number }[] = Array.isArray(order.items)
+      ? order.items
+      : [];
     for (const item of items) {
       const key = item.name;
-      if (!key) continue;
       if (!itemMap[key]) itemMap[key] = { count: 0, revenue: 0 };
       itemMap[key].count += item.qty ?? 1;
       itemMap[key].revenue += (item.price ?? 0) * (item.qty ?? 1);
@@ -102,12 +89,11 @@ export async function buildReportData(
 
   const dayCounts: Record<number, number> = {};
   const hourCounts: Record<number, number> = {};
+
   for (const order of paidOrders) {
     const d = new Date(order.created_at);
-    const day = d.getDay();
-    const hour = d.getHours();
-    dayCounts[day] = (dayCounts[day] ?? 0) + 1;
-    hourCounts[hour] = (hourCounts[hour] ?? 0) + 1;
+    dayCounts[d.getDay()] = (dayCounts[d.getDay()] ?? 0) + 1;
+    hourCounts[d.getHours()] = (hourCounts[d.getHours()] ?? 0) + 1;
   }
 
   const peakDayNum = Object.entries(dayCounts).sort((a, b) => b[1] - a[1])[0];
@@ -115,7 +101,7 @@ export async function buildReportData(
 
   return {
     restaurantName: restaurant.name,
-    ownerName,
+    ownerName: await resolveOwnerName(restaurant),
     month: formatMonthLabel(year, month),
     totalOrders: allOrders.length,
     completedOrders,
@@ -148,7 +134,7 @@ async function resolveOwnerName(restaurant: { name: string; owner_id?: string | 
     if (meta?.name) return meta.name;
     if (userData.user?.email) return userData.user.email.split("@")[0];
   }
-  return restaurant.name;
+  return "Owner";
 }
 
 export type RestaurantReportContext = {

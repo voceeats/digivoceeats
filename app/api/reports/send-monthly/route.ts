@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import {
-  sendMonthlyReportForRestaurant,
-  sendMonthlyReportsForAll,
-} from "@/lib/email/send-report";
+import { buildReportData, logEmailSend } from "@/lib/email/report-data";
+import { sendMonthlyReportEmail } from "@/lib/email/send-report";
+import { supabaseAdmin } from "@/lib/supabase";
+
+const DEFAULT_RESTAURANT_ID = "339ad678-297a-4d57-9f4b-a502650829d3";
 
 async function verifyAdmin(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -19,46 +20,89 @@ async function verifyAdmin(request: NextRequest) {
   return !!user && !!adminEmail && user.email === adminEmail;
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const isAdmin = await verifyAdmin(request);
-    const cronSecret = process.env.CRON_SECRET;
-    const authHeader = request.headers.get("authorization");
-    const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+async function resolveOwnerEmail(restaurantId: string): Promise<string | null> {
+  const { data: restaurant } = await supabaseAdmin
+    .from("restaurants")
+    .select("email, owner_id")
+    .eq("id", restaurantId)
+    .single();
 
-    if (!isAdmin && !isCron) {
+  if (!restaurant) return null;
+  if (restaurant.email) return restaurant.email;
+
+  if (restaurant.owner_id) {
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(restaurant.owner_id);
+    if (userData.user?.email) return userData.user.email;
+  }
+
+  return null;
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+    const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+    const isAdmin = !isCron && (await verifyAdmin(req));
+
+    if (!isCron && !isAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const restaurantId: string = body.restaurantId ?? DEFAULT_RESTAURANT_ID;
+
     const now = new Date();
-    const year = parseInt(String(body.year || now.getFullYear()), 10);
-    const month = parseInt(String(body.month || now.getMonth() + 1), 10);
-    const restaurantId = body.restaurantId as string | undefined;
+    const defaultMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+    const defaultYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const year: number = body.year ?? defaultYear;
+    const month: number = body.month ?? defaultMonth;
 
     if (month < 1 || month > 12) {
       return NextResponse.json({ error: "Invalid month" }, { status: 400 });
     }
 
-    if (restaurantId) {
-      const result = await sendMonthlyReportForRestaurant(restaurantId, year, month);
-      return NextResponse.json({
-        success: result.success,
-        result,
-      });
+    let toEmail: string | undefined = body.email;
+    if (!toEmail) {
+      toEmail = (await resolveOwnerEmail(restaurantId)) ?? undefined;
     }
 
-    const results = await sendMonthlyReportsForAll(year, month);
-    const succeeded = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
+    if (!toEmail) {
+      return NextResponse.json({ error: "No owner email found" }, { status: 400 });
+    }
+
+    const reportData = await buildReportData(restaurantId, year, month);
+    const { id } = await sendMonthlyReportEmail(toEmail, reportData);
+
+    await logEmailSend({
+      restaurantId,
+      recipientEmail: toEmail,
+      reportMonth: month,
+      reportYear: year,
+      status: "sent",
+      resendId: id,
+      report: reportData,
+    });
+
+    const period = `${year}-${String(month).padStart(2, "0")}`;
 
     return NextResponse.json({
-      success: failed === 0,
-      summary: { total: results.length, succeeded, failed },
-      results,
+      success: true,
+      resendId: id,
+      recipient: toEmail,
+      period,
+      report: reportData,
+      result: {
+        restaurantId,
+        restaurantName: reportData.restaurantName,
+        success: true,
+        email: toEmail,
+        resendId: id,
+        report: reportData,
+      },
     });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Send report failed";
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

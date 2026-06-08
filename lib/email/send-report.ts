@@ -1,7 +1,6 @@
 import { Resend } from "resend";
 import {
-  buildMonthlyReportHtml,
-  monthlyReportSubject,
+  generateMonthlyReportHtml,
   type MonthlyReportData,
 } from "@/lib/email/monthly-report-template";
 import {
@@ -9,6 +8,32 @@ import {
   fetchAllRestaurantIds,
   logEmailSend,
 } from "@/lib/email/report-data";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function sendMonthlyReportEmail(
+  toEmail: string,
+  data: MonthlyReportData,
+): Promise<{ id: string }> {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY not configured");
+  }
+
+  const subject = `📊 ${data.restaurantName} — Monthly Report (${data.month})`;
+  const html = generateMonthlyReportHtml(data);
+
+  const { data: result, error } = await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL ?? "reports@digivoceeats.com",
+    to: [toEmail],
+    bcc: [process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "diginetplore@gmail.com"],
+    subject,
+    html,
+  });
+
+  if (error) throw new Error(`Resend error: ${error.message}`);
+
+  return { id: result!.id };
+}
 
 export type SendReportResult = {
   restaurantId: string;
@@ -47,37 +72,36 @@ export async function sendMonthlyReportForRestaurant(
     return result;
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  try {
+    const { id } = await sendMonthlyReportEmail(context.ownerEmail, context.report);
+
+    await logEmailSend({
+      restaurantId,
+      recipientEmail: context.ownerEmail,
+      reportMonth: month,
+      reportYear: year,
+      status: "sent",
+      resendId: id,
+      report: context.report,
+    });
+
     return {
       restaurantId,
       restaurantName: context.report.restaurantName,
-      success: false,
+      success: true,
       email: context.ownerEmail,
-      error: "RESEND_API_KEY not configured",
       report: context.report,
+      resendId: id,
     };
-  }
-
-  const html = buildMonthlyReportHtml(context.report);
-  const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL || "reports@digivoceeats.com";
-
-  const { data, error: sendError } = await resend.emails.send({
-    from: `DigiVoceEats Reports <${from}>`,
-    to: context.ownerEmail,
-    subject: monthlyReportSubject(context.report),
-    html,
-  });
-
-  if (sendError) {
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Send failed";
     await logEmailSend({
       restaurantId,
       recipientEmail: context.ownerEmail,
       reportMonth: month,
       reportYear: year,
       status: "failed",
-      errorMessage: sendError.message,
+      errorMessage: msg,
       report: context.report,
     });
     return {
@@ -85,29 +109,10 @@ export async function sendMonthlyReportForRestaurant(
       restaurantName: context.report.restaurantName,
       success: false,
       email: context.ownerEmail,
-      error: sendError.message,
+      error: msg,
       report: context.report,
     };
   }
-
-  await logEmailSend({
-    restaurantId,
-    recipientEmail: context.ownerEmail,
-    reportMonth: month,
-    reportYear: year,
-    status: "sent",
-    resendId: data?.id,
-    report: context.report,
-  });
-
-  return {
-    restaurantId,
-    restaurantName: context.report.restaurantName,
-    success: true,
-    email: context.ownerEmail,
-    report: context.report,
-    resendId: data?.id,
-  };
 }
 
 export async function sendMonthlyReportsForAll(year: number, month: number) {
