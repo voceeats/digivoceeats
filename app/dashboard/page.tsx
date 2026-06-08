@@ -61,41 +61,22 @@ async function openAudioContext(): Promise<AudioContext | null> {
   }
 }
 
-/** Loud kitchen-bell style alert — Web Audio only, no external files */
-function playKitchenBell(ctx: AudioContext) {
-  const t0 = ctx.currentTime;
-  const out = ctx.createGain();
-  out.connect(ctx.destination);
-  out.gain.setValueAtTime(0, t0);
-  out.gain.linearRampToValueAtTime(0.92, t0 + 0.015);
-  out.gain.exponentialRampToValueAtTime(0.001, t0 + 2.4);
+/** Pleasant restaurant bell — Web Audio only */
+function playRestaurantBell(audioContext: AudioContext) {
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
 
-  const chord = [784, 988, 1175];
-  chord.forEach((freq, i) => {
-    const osc = ctx.createOscillator();
-    osc.type = i === 0 ? "triangle" : "sine";
-    osc.frequency.setValueAtTime(freq, t0 + i * 0.02);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.42 / chord.length, t0 + i * 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + 1.8);
-    osc.connect(g);
-    g.connect(out);
-    osc.start(t0 + i * 0.02);
-    osc.stop(t0 + 2);
-  });
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
 
-  const strike = t0 + 0.28;
-  const osc2 = ctx.createOscillator();
-  osc2.type = "square";
-  osc2.frequency.setValueAtTime(1318.51, strike);
-  const g2 = ctx.createGain();
-  g2.gain.setValueAtTime(0, strike);
-  g2.gain.linearRampToValueAtTime(0.35, strike + 0.02);
-  g2.gain.exponentialRampToValueAtTime(0.001, strike + 0.55);
-  osc2.connect(g2);
-  g2.connect(out);
-  osc2.start(strike);
-  osc2.stop(strike + 0.6);
+  oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.3);
+
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.5);
+
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 1.5);
 }
 
 const S = {
@@ -131,14 +112,25 @@ const S = {
   } as React.CSSProperties),
 };
 
-function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, status: string) => void }) {
+function OrderCard({
+  order,
+  onUpdate,
+}: {
+  order: any;
+  onUpdate: (id: string, status: string) => void;
+}) {
   const awaiting = isAwaitingPayment(order);
   const isNew = isNewPaidOrder(order);
   const [expanded, setExpanded] = useState(isNew || awaiting);
   const [loading, setLoading] = useState<string | null>(null);
   const badge = getOrderBadge(order);
   const showPaymentCode = awaiting && !!order.payment_code;
-  const showAcceptReject = isNew;
+  const showAcceptReject = order.status === "pending" && order.payment_status === "paid";
+
+  // Auto-expand when Stripe payment completes and order becomes actionable
+  useEffect(() => {
+    if (showAcceptReject) setExpanded(true);
+  }, [showAcceptReject, order.id]);
 
   const doAction = async (action: string) => {
     setLoading(action);
@@ -254,6 +246,36 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
         </div>
       )}
 
+      {showAcceptReject && (
+        <div
+          style={{
+            padding: "14px 22px",
+            borderTop: "1px solid rgba(0,200,150,0.25)",
+            background: "rgba(0,200,150,0.08)",
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void doAction("accept"); }}
+            disabled={!!loading}
+            style={{ ...S.btn("#00C896"), flex: 1, fontSize: 14, padding: "13px", minWidth: 140 }}
+          >
+            {loading === "accept" ? "..." : "✅ Accept Order"}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void doAction("reject"); }}
+            disabled={!!loading}
+            style={S.btn("#EF4444", true)}
+          >
+            {loading === "reject" ? "..." : "✗ Reject"}
+          </button>
+        </div>
+      )}
+
       {expanded && (
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "22px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 20 }}>
@@ -310,14 +332,6 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {showAcceptReject && (
-              <>
-                <button onClick={() => doAction("accept")} disabled={!!loading} style={{ ...S.btn("#00C896"), flex: 1, fontSize: 14, padding: "13px" }}>
-                  {loading === "accept" ? "..." : "✅ Accept Order"}
-                </button>
-                <button onClick={() => doAction("reject")} style={S.btn("#EF4444", true)}>✗ Reject</button>
-              </>
-            )}
             {order.status === "accepted" && (
               <button onClick={() => doAction("complete")} disabled={!!loading} style={{ ...S.btn("#F59E0B"), flex: 1, fontSize: 14, padding: "13px" }}>
                 {loading === "complete" ? "..." : "🍽️ Mark Completed"}
@@ -1366,7 +1380,7 @@ export default function Dashboard() {
       }
     }
     if (ctx.state === "running") {
-      playKitchenBell(ctx);
+      playRestaurantBell(ctx);
       pendingRingRef.current = false;
     } else {
       pendingRingRef.current = true;
@@ -1380,7 +1394,7 @@ export default function Dashboard() {
       if (ctx?.state === "running") {
         if (pendingRingRef.current) {
           pendingRingRef.current = false;
-          playKitchenBell(ctx);
+          playRestaurantBell(ctx);
         }
       }
     };
@@ -1440,18 +1454,24 @@ export default function Dashboard() {
     }
   }, [pending]);
 
+  // Ring every 8s while unacknowledged paid pending orders exist
   useEffect(() => {
-    if (!soundActive || pending === 0) {
+    if (pending === 0) {
       if (bellRepeatRef.current) {
         clearInterval(bellRepeatRef.current);
         bellRepeatRef.current = null;
       }
       return;
     }
-    if (bellRepeatRef.current != null) return;
+
+    if (!soundActive) return;
+
+    void ringBell();
+    if (bellRepeatRef.current) clearInterval(bellRepeatRef.current);
     bellRepeatRef.current = setInterval(() => {
       void ringBell();
-    }, 30000);
+    }, 8000);
+
     return () => {
       if (bellRepeatRef.current) {
         clearInterval(bellRepeatRef.current);
@@ -1554,6 +1574,12 @@ export default function Dashboard() {
         (payload) => {
           const row = payload.new as Record<string, unknown>;
           const old = payload.old as Record<string, unknown> | undefined;
+
+          const newStatus = String(row.status ?? "");
+          const newPayment = String(row.payment_status ?? "");
+          const oldStatus = old?.status != null ? String(old.status) : "";
+          const oldPayment = old?.payment_status != null ? String(old.payment_status) : "";
+
           setOrders((prev) => {
             const visible = isVisibleToRestaurant(row as { status?: string; payment_status?: string | null });
             const idx = prev.findIndex((o) => o.id === row.id);
@@ -1564,10 +1590,11 @@ export default function Dashboard() {
             if (idx >= 0) return prev.map((o) => (o.id === row.id ? { ...o, ...row } : o));
             return [row as any, ...prev];
           });
-          const becameNewPaidOrder =
-            isNewOrderAlert(row as { status?: string; payment_status?: string | null }) &&
-            !isNewOrderAlert(old as { status?: string; payment_status?: string | null });
-          if (becameNewPaidOrder) {
+
+          // Stripe webhook: pending_payment/unpaid → pending/paid
+          const isPaidPending = newStatus === "pending" && newPayment === "paid";
+          const wasPaidPending = oldStatus === "pending" && oldPayment === "paid";
+          if (isPaidPending && !wasPaidPending) {
             addOrderAlert(String(row.id), String(row.order_number ?? row.id));
           }
         },
