@@ -31,7 +31,7 @@ function isNewPaidOrder(order: { status?: string; payment_status?: string | null
 
 /** Sound/toast alert only when a paid order is ready for accept/reject. */
 function isNewOrderAlert(order: { status?: string; payment_status?: string | null }) {
-  return isNewPaidOrder(order);
+  return isNewPaidOrder(order) || isAwaitingPayment(order);
 }
 
 function getOrderBadge(order: { status?: string; payment_status?: string | null }) {
@@ -126,7 +126,9 @@ function OrderCard({
   const [loading, setLoading] = useState<string | null>(null);
   const badge = getOrderBadge(order);
   const showPaymentCode = awaiting && !!order.payment_code;
-  const showAcceptReject = order.status === "pending" && order.payment_status === "paid";
+  const showAcceptReject =
+    (order.status === "pending" && order.payment_status === "paid") ||
+    (order.status === "pending_payment" && order.payment_status === "unpaid");
 
   // Auto-expand when Stripe payment completes and order becomes actionable
   useEffect(() => {
@@ -1347,7 +1349,7 @@ export default function Dashboard() {
   const [orderToasts, setOrderToasts] = useState<{ key: string; orderNumber: string }[]>([]);
 
   const pending = useMemo(
-    () => orders.filter((o) => isNewPaidOrder(o)).length,
+    () => orders.filter((o) => isNewPaidOrder(o) || isAwaitingPayment(o)).length,
     [orders],
   );
 
