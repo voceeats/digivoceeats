@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
+import { PaymentQrSection } from "@/components/payment-qr-section";
 import { detectAndPrint, browserPrint, type PrintOrder } from "@/lib/print";
 
 const supabase = createClient(
@@ -29,6 +30,14 @@ function isNewOrderAlert(order: { status?: string; payment_status?: string | nul
   if (order.status !== "pending") return false;
   if (order.payment_status === "paid") return true;
   return order.status !== "pending_payment" && order.payment_status !== "unpaid";
+}
+
+function isUnpaidPendingPayment(order: { payment_status?: string | null; status?: string | null }) {
+  return order.payment_status === "unpaid" || order.status === "pending_payment";
+}
+
+function isOrderPaid(order: { payment_status?: string | null }) {
+  return order.payment_status === "paid" || order.payment_status === "cash_collected";
 }
 
 function timeAgo(iso: string) {
@@ -125,6 +134,8 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
   const [loading, setLoading] = useState<string | null>(null);
   const cfg = STATUS[order.status] || STATUS.pending;
   const isNew = order.status === "pending";
+  const showPaymentCode = isUnpaidPendingPayment(order) && !!order.payment_code;
+  const paid = isOrderPaid(order);
 
   const doAction = async (action: string) => {
     setLoading(action);
@@ -193,12 +204,19 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
                 {order.customer_name || "Voice Customer"}
               </span>
               <span style={S.badge(cfg.color)}>{cfg.label}</span>
-              {order.payment_status === "paid" && <span style={S.badge("#00C896")}>✓ Paid</span>}
-              {order.payment_status === "awaiting_payment" && <span style={S.badge("#F59E0B")}>⏳ Awaiting Payment</span>}
+              {paid && <span style={S.badge("#00C896")}>✅ PAID</span>}
+              {!paid && isUnpaidPendingPayment(order) && !order.payment_code && (
+                <span style={S.badge("#F59E0B")}>⏳ Awaiting Payment</span>
+              )}
               {order.payment_method === "cash" && <span style={S.badge("#6B7280")}>💵 Cash</span>}
             </div>
             <div style={{ color: "#6B7280", fontSize: 12 }}>
               {order.order_number} · {Array.isArray(order.items) ? order.items.length : 0} items · {timeAgo(order.created_at)}
+              {showPaymentCode && (
+                <span style={{ color: "#FF6B35", fontWeight: 700, marginLeft: 8 }}>
+                  · Code: {order.payment_code}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -214,6 +232,26 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
           <span style={{ color: "#4B5563", fontSize: 18, transform: expanded ? "rotate(180deg)" : "none", transition: "0.3s", display: "inline-block" }}>▾</span>
         </div>
       </div>
+
+      {showPaymentCode && (
+        <div
+          style={{
+            padding: "14px 22px",
+            borderTop: "1px solid rgba(255,107,53,0.25)",
+            background: "rgba(255,107,53,0.08)",
+          }}
+        >
+          <div style={{ color: "#FF6B35", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>
+            Payment Code
+          </div>
+          <div style={{ color: "#F9FAFB", fontSize: 32, fontWeight: 900, letterSpacing: 6, lineHeight: 1.1 }}>
+            {order.payment_code}
+          </div>
+          <div style={{ color: "#9CA3AF", fontSize: 12, marginTop: 6 }}>
+            Tell this code to customer if they need it
+          </div>
+        </div>
+      )}
 
       {expanded && (
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "22px" }}>
@@ -893,6 +931,61 @@ function HoursTab({ restaurantId }: { restaurantId: string }) {
   );
 }
 
+function PaymentQRTab({
+  restaurantId,
+  restaurantName,
+}: {
+  restaurantId: string;
+  restaurantName: string;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: 16,
+          padding: 24,
+          marginBottom: 20,
+        }}
+      >
+        <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
+          📱 Payment QR Code
+        </h3>
+        <p style={{ color: "#9CA3AF", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+          Display this QR code at your counter so customers can scan and pay at payfood.us.
+        </p>
+        <PaymentQrSection
+          restaurantId={restaurantId}
+          restaurantName={restaurantName}
+          compact
+        />
+      </div>
+
+      <div
+        style={{
+          background: "rgba(255,107,53,0.06)",
+          border: "1px solid rgba(255,107,53,0.2)",
+          borderRadius: 16,
+          padding: 24,
+        }}
+      >
+        <h3 style={{ color: "#FF6B35", fontWeight: 800, fontSize: 16, marginBottom: 16 }}>
+          Staff Instructions
+        </h3>
+        <p style={{ color: "#D1D5DB", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
+          When a customer arrives without paying:
+        </p>
+        <ol style={{ color: "#9CA3AF", fontSize: 14, lineHeight: 1.8, paddingLeft: 20, margin: 0 }}>
+          <li>Find their order in the Orders tab</li>
+          <li>Tell them their 4-digit code</li>
+          <li>Point them to the QR code to scan</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: any) => void }) {
   const pctFromTax = () => {
     const tr = restaurant.tax_rate ?? 0.06;
@@ -1216,7 +1309,7 @@ function SettingsTab({ restaurant, onUpdate }: { restaurant: any; onUpdate: (r: 
 
 export default function Dashboard() {
   const router = useRouter();
-  const [tab, setTab] = useState<"orders" | "menu" | "analytics" | "hours" | "settings">("orders");
+  const [tab, setTab] = useState<"orders" | "menu" | "analytics" | "hours" | "payment-qr" | "settings">("orders");
   const [filter, setFilter] = useState("all");
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1573,6 +1666,7 @@ export default function Dashboard() {
     { id: "menu", label: "Menu", icon: "🍽️" },
     { id: "analytics", label: "Analytics", icon: "📊" },
     { id: "hours", label: "Hours", icon: "⏰" },
+    { id: "payment-qr", label: "Payment QR", icon: "📱" },
     { id: "settings", label: "Settings", icon: "⚙️" },
   ];
 
@@ -1777,9 +1871,28 @@ export default function Dashboard() {
                 <div style={{ fontSize: 14 }}>Call (703) 686-5337 to place a voice order!</div>
               </div>
             ) : (
-              filtered.map(order => (
-                <OrderCard key={order.id} order={order} onUpdate={updateOrder} />
-              ))
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 100px 100px",
+                    gap: 12,
+                    padding: "8px 22px 12px",
+                    color: "#6B7280",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.6,
+                  }}
+                >
+                  <span>Order</span>
+                  <span>Code</span>
+                  <span style={{ textAlign: "right" }}>Total</span>
+                </div>
+                {filtered.map(order => (
+                  <OrderCard key={order.id} order={order} onUpdate={updateOrder} />
+                ))}
+              </>
             )}
           </div>
         )}
@@ -1791,6 +1904,10 @@ export default function Dashboard() {
 
         {tab === "hours" && restaurant && (
           <HoursTab restaurantId={restaurant.id} />
+        )}
+
+        {tab === "payment-qr" && restaurant && (
+          <PaymentQRTab restaurantId={restaurant.id} restaurantName={restaurant.name} />
         )}
 
         {tab === "settings" && restaurant && (

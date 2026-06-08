@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
+import { PaymentQrSection } from "@/components/payment-qr-section";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -142,7 +143,7 @@ export default function AdminPage() {
               return (
                 <div key={rest.id} style={{ ...S.card, padding: "20px 24px", marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
                         <span style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16 }}>{rest.name}</span>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: rest.is_open ? "#00C896" : "#EF4444", display: "inline-block" }} />
@@ -168,6 +169,7 @@ export default function AdminPage() {
                       </div>
                     </div>
                   </div>
+                  <PaymentQrSection restaurantId={rest.id} restaurantName={rest.name} />
                 </div>
               );
             })}
