@@ -60,13 +60,11 @@ STEP 1 — GREET IMMEDIATELY (no function calls yet):
 Say instantly: "Thanks for calling ${restaurantName}, this is Chloe! What can I get for you today?"
 
 ==================================================
-STEP 2 — AFTER GREETING, check hours and customer:
+STEP 2 — AFTER GREETING, check hours:
 While the customer is responding to your greeting:
 - Call check_restaurant_hours silently (do not pause or announce).
-- Call lookup_customer with phone=${"{{user_number}}"} silently (do not pause or announce).
-- Remember this phone number — you will need it in STEP 6 and STEP 7.
+- Remember ${"{{user_number}}"} — you will need it in STEP 6 and STEP 7.
 - If the restaurant is closed (is_open is false or accepting_orders is false): say "I'm sorry we're currently closed. [reason]. Have a great day!" and call end_call.
-- If returning customer with first_name: use their first name naturally in conversation — never repeat the greeting.
 
 ==================================================
 STEP 3 — TAKE ORDER:
@@ -119,13 +117,6 @@ If no, randomly say ONE of:
 Then call end_call.
 
 ==================================================
-FORGOT CODE SCENARIO:
-If the customer says they forgot their code or asks for their order code:
-- Call get_unpaid_order with phone=${"{{user_number}}"}.
-- If found: "Your code is [read digits slowly]. Go to payfood.us to complete payment."
-- If not found: "I don't see any pending orders. Would you like to place a new order?"
-
-==================================================
 CRITICAL RULES:
 - GREET INSTANTLY — no delays, no function calls before greeting.
 - NEVER mention SMS or text messages.
@@ -161,54 +152,6 @@ export function buildCheckHoursTool(appUrl: string, restaurantId: string) {
     parameters: {
       type: "object",
       properties: {},
-    },
-  };
-}
-
-export function buildLookupCustomerTool(appUrl: string) {
-  return {
-    type: "custom",
-    name: "lookup_customer",
-    description:
-      "Look up a returning customer by phone number. Call silently in the background AFTER greeting, passing {{user_number}}. Returns first_name and phone if they are a returning customer.",
-    url: `${appUrl}/api/customer/lookup`,
-    method: "GET",
-    speak_during_execution: false,
-    speak_after_execution: false,
-    parameters: {
-      type: "object",
-      properties: {
-        phone: {
-          type: "string",
-          description:
-            "Caller phone number in any format. Use the call's {{user_number}} dynamic variable.",
-        },
-      },
-      required: ["phone"],
-    },
-  };
-}
-
-export function buildGetUnpaidOrderTool(appUrl: string) {
-  return {
-    type: "custom",
-    name: "get_unpaid_order",
-    description:
-      "Look up customer's unpaid order by phone number to retrieve their payment code if they forgot it. Returns payment_code, order_number, total, and items summary for orders placed in the last 2 hours.",
-    url: `${appUrl}/api/order/lookup-by-phone`,
-    method: "GET",
-    speak_during_execution: false,
-    speak_after_execution: false,
-    parameters: {
-      type: "object",
-      properties: {
-        phone: {
-          type: "string",
-          description:
-            "Caller phone number in any format. Use the call's {{user_number}} dynamic variable.",
-        },
-      },
-      required: ["phone"],
     },
   };
 }
@@ -271,8 +214,6 @@ export function mergeRetellGeneralTools(
 
   tools.push(
     buildCheckHoursTool(appUrl, restaurantId),
-    buildLookupCustomerTool(appUrl),
-    buildGetUnpaidOrderTool(appUrl),
     buildSubmitOrderTool(appUrl),
   );
 
