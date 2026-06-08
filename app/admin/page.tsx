@@ -56,6 +56,24 @@ export default function AdminPage() {
   const [adminAnalytics, setAdminAnalytics] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overview" | "restaurants" | "revenue" | "analytics">("overview");
+  const [reportMonth, setReportMonth] = useState(() => new Date().getMonth() + 1);
+  const [reportYear, setReportYear] = useState(() => new Date().getFullYear());
+  const [sendingReportFor, setSendingReportFor] = useState<string | null>(null);
+  const [reportMessages, setReportMessages] = useState<Record<string, string>>({});
+
+  const monthOptions = (() => {
+    const opts: Array<{ month: number; year: number; label: string }> = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      opts.push({
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        label: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      });
+    }
+    return opts;
+  })();
 
   useEffect(() => {
     checkAdminAuth();
@@ -84,6 +102,45 @@ export default function AdminPage() {
       setAdminAnalytics(await analyticsRes.json());
     }
     setLoading(false);
+  };
+
+  const sendReport = async (restaurantId: string) => {
+    setSendingReportFor(restaurantId);
+    setReportMessages((prev) => ({ ...prev, [restaurantId]: "" }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setReportMessages((prev) => ({ ...prev, [restaurantId]: "❌ Not authenticated" }));
+        return;
+      }
+      const r = await fetch("/api/reports/send-monthly", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ restaurantId, month: reportMonth, year: reportYear }),
+      });
+      const data = await r.json();
+      if (r.ok && data.success) {
+        setReportMessages((prev) => ({
+          ...prev,
+          [restaurantId]: `✅ Report sent to ${data.result?.email || "owner"}`,
+        }));
+      } else {
+        setReportMessages((prev) => ({
+          ...prev,
+          [restaurantId]: `❌ ${data.result?.error || data.error || "Send failed"}`,
+        }));
+      }
+    } catch (e) {
+      setReportMessages((prev) => ({
+        ...prev,
+        [restaurantId]: `❌ ${e instanceof Error ? e.message : "Send failed"}`,
+      }));
+    } finally {
+      setSendingReportFor(null);
+    }
   };
 
   const totalRevenue = adminAnalytics?.platform.totalCommission ?? allOrders.reduce((s, o) => s + (o.platform_fee || 0), 0);
@@ -242,17 +299,45 @@ export default function AdminPage() {
 
         {tab === "restaurants" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               <h3 style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18 }}>All Restaurants</h3>
-              <button style={S.btn("#FF6B35")}>+ Add Restaurant</button>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span style={{ color: "#6B7280", fontSize: 12, fontWeight: 600 }}>Report period:</span>
+                <select
+                  value={`${reportYear}-${reportMonth}`}
+                  onChange={(e) => {
+                    const [year, month] = e.target.value.split("-").map(Number);
+                    setReportYear(year);
+                    setReportMonth(month);
+                  }}
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 10,
+                    color: "#F9FAFB",
+                    padding: "8px 12px",
+                    fontWeight: 600,
+                    fontSize: 13,
+                  }}
+                >
+                  {monthOptions.map((m) => (
+                    <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <button style={S.btn("#FF6B35")}>+ Add Restaurant</button>
+              </div>
             </div>
             {restaurants.map(rest => {
               const restOrders = allOrders.filter(o => o.restaurant_id === rest.id);
               const restRevenue = restOrders.reduce((s, o) => s + (o.platform_fee || 0), 0);
+              const reportMsg = reportMessages[rest.id];
+              const isSending = sendingReportFor === rest.id;
               return (
                 <div key={rest.id} style={{ ...S.card, padding: "20px 24px", marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
                         <span style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 16 }}>{rest.name}</span>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: rest.is_open ? "#00C896" : "#EF4444", display: "inline-block" }} />
@@ -262,8 +347,11 @@ export default function AdminPage() {
                       </div>
                       <div style={{ color: "#6B7280", fontSize: 13 }}>{rest.address}</div>
                       <div style={{ color: "#4B5563", fontSize: 12, marginTop: 4 }}>{rest.phone}</div>
+                      {rest.email && (
+                        <div style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>📧 {rest.email}</div>
+                      )}
                     </div>
-                    <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
                       <div style={{ textAlign: "center" }}>
                         <div style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 20 }}>{restOrders.length}</div>
                         <div style={{ color: "#6B7280", fontSize: 11 }}>Total Orders</div>
@@ -271,6 +359,27 @@ export default function AdminPage() {
                       <div style={{ textAlign: "center" }}>
                         <div style={{ color: "#FF6B35", fontWeight: 800, fontSize: 20 }}>${restRevenue.toFixed(0)}</div>
                         <div style={{ color: "#6B7280", fontSize: 11 }}>Your Revenue</div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                        <button
+                          type="button"
+                          onClick={() => void sendReport(rest.id)}
+                          disabled={isSending}
+                          style={{
+                            ...S.btn("#6366F1"),
+                            opacity: isSending ? 0.7 : 1,
+                            cursor: isSending ? "not-allowed" : "pointer",
+                            fontSize: 12,
+                            padding: "8px 14px",
+                          }}
+                        >
+                          {isSending ? "Sending..." : "📧 Send Report"}
+                        </button>
+                        {reportMsg && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: reportMsg.startsWith("✅") ? "#00C896" : "#EF4444", maxWidth: 220, textAlign: "right" }}>
+                            {reportMsg}
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 12, padding: "8px 14px" }}>View</button>
