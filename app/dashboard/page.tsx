@@ -20,16 +20,19 @@ const STATUS: Record<string, { label: string; color: string }> = {
   rejected:  { label: "Rejected",   color: "#EF4444" },
 };
 
-/** Restaurant only sees orders after payment (or non–SMS-link flows like cash). */
+/** Restaurant sees paid orders, in-progress orders, and unpaid pay-at-restaurant orders (for payment code). */
 function isVisibleToRestaurant(order: { status?: string; payment_status?: string | null }) {
-  return order.payment_status === "paid" || order.status !== "pending_payment";
+  if (order.payment_status === "paid" || order.payment_status === "cash_collected") return true;
+  if (order.status === "pending_payment" && order.payment_status === "unpaid") return true;
+  return order.status !== "pending_payment";
 }
 
-/** Alert on INSERT (e.g. cash) or when payment completes (handled in UPDATE). */
+/** Alert on new orders staff should action — including unpaid voice orders awaiting payment. */
 function isNewOrderAlert(order: { status?: string; payment_status?: string | null }) {
+  if (order.payment_status === "paid") return order.status === "pending";
+  if (order.status === "pending_payment" && order.payment_status === "unpaid") return true;
   if (order.status !== "pending") return false;
-  if (order.payment_status === "paid") return true;
-  return order.status !== "pending_payment" && order.payment_status !== "unpaid";
+  return order.payment_status !== "unpaid";
 }
 
 function isUnpaidPendingPayment(order: { payment_status?: string | null; status?: string | null }) {
@@ -1466,7 +1469,7 @@ export default function Dashboard() {
     initDashboard();
   }, []);
 
-  // Auto open/close based on opening hours — check every minute
+  // Auto open/close based on opening hours — check every 10 minutes
   useEffect(() => {
     if (!restaurant?.id) return;
 
@@ -1507,7 +1510,7 @@ export default function Dashboard() {
     };
 
     checkHours();
-    const interval = setInterval(checkHours, 60_000);
+    const interval = setInterval(checkHours, 600_000);
     return () => clearInterval(interval);
   }, [restaurant?.id]);
 

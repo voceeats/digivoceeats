@@ -218,13 +218,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`✅ submit_order: ${order!.order_number} code=${code}`);
+    console.log(`✅ submit_order: ${order!.order_number} payment_code=${code}`);
 
     return NextResponse.json({
       order_id: order!.id,
       order_number: order!.order_number,
-      payment_code: code,
-      payment_code_spoken: spokenCode(code),
+      payment_code: order!.payment_code ?? code,
+      payment_code_spoken: spokenCode(order!.payment_code ?? code),
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "submit_order failed";

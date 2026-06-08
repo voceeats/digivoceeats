@@ -133,18 +133,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const eventType = body.event_type || body.event;
-    console.log("📞 Retell webhook received:", eventType);
-    console.log("📦 Full body:", JSON.stringify(body).slice(0, 1000));
+    const callData = body.call || body;
+    const callId = (callData.call_id || body.call_id) as string | undefined;
+
+    console.log("📞 Retell webhook received:", eventType, "call_id:", callId);
 
     if (eventType !== "call_ended" && eventType !== "call_analyzed") {
       return NextResponse.json({ received: true, event: eventType });
     }
 
-    const callData = body.call || body;
-    const callId = callData.call_id || body.call_id;
-
-    // Idempotency: Retell fires both call_ended and call_analyzed for the same call.
-    // Only create orders on call_analyzed (has extracted order data).
+    // Idempotency: one order per call — submit_order may have already created it.
     if (callId) {
       const existing = await findOrderByRetellCallId(callId);
       if (existing) {
@@ -153,11 +151,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (eventType === "call_ended") {
-      console.log("⏭️ call_ended received — waiting for call_analyzed:", callId);
+      console.log("⏭️ call_ended — no order yet, waiting for call_analyzed or submit_order:", callId);
       return NextResponse.json({ received: true, skipped: "awaiting call_analyzed" });
     }
 
-    // Get custom data — this is where Retell puts extracted info
+    // Only call_analyzed may create an order below (and only if none exists for this call_id).
     const customData = callData.custom_data ||
                        body.custom_data ||
                        callData.call_analysis ||
