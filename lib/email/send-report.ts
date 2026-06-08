@@ -2,12 +2,12 @@ import { Resend } from "resend";
 import {
   buildMonthlyReportHtml,
   monthlyReportSubject,
+  type MonthlyReportData,
 } from "@/lib/email/monthly-report-template";
 import {
   buildRestaurantReportContext,
   fetchAllRestaurantIds,
   logEmailSend,
-  type MonthlyReportMetrics,
 } from "@/lib/email/report-data";
 
 export type SendReportResult = {
@@ -16,7 +16,7 @@ export type SendReportResult = {
   success: boolean;
   email?: string;
   error?: string;
-  metrics?: MonthlyReportMetrics;
+  report?: MonthlyReportData;
   resendId?: string;
 };
 
@@ -51,28 +51,22 @@ export async function sendMonthlyReportForRestaurant(
   if (!apiKey) {
     return {
       restaurantId,
-      restaurantName: context.restaurantName,
+      restaurantName: context.report.restaurantName,
       success: false,
       email: context.ownerEmail,
       error: "RESEND_API_KEY not configured",
+      report: context.report,
     };
   }
 
-  const html = buildMonthlyReportHtml({
-    ownerName: context.ownerName,
-    restaurantName: context.restaurantName,
-    year,
-    month,
-    metrics: context.metrics,
-  });
-
+  const html = buildMonthlyReportHtml(context.report);
   const resend = new Resend(apiKey);
   const from = process.env.RESEND_FROM_EMAIL || "reports@digivoceeats.com";
 
   const { data, error: sendError } = await resend.emails.send({
     from: `DigiVoceEats Reports <${from}>`,
     to: context.ownerEmail,
-    subject: monthlyReportSubject(year, month),
+    subject: monthlyReportSubject(context.report),
     html,
   });
 
@@ -84,15 +78,15 @@ export async function sendMonthlyReportForRestaurant(
       reportYear: year,
       status: "failed",
       errorMessage: sendError.message,
-      metrics: context.metrics,
+      report: context.report,
     });
     return {
       restaurantId,
-      restaurantName: context.restaurantName,
+      restaurantName: context.report.restaurantName,
       success: false,
       email: context.ownerEmail,
       error: sendError.message,
-      metrics: context.metrics,
+      report: context.report,
     };
   }
 
@@ -103,15 +97,15 @@ export async function sendMonthlyReportForRestaurant(
     reportYear: year,
     status: "sent",
     resendId: data?.id,
-    metrics: context.metrics,
+    report: context.report,
   });
 
   return {
     restaurantId,
-    restaurantName: context.restaurantName,
+    restaurantName: context.report.restaurantName,
     success: true,
     email: context.ownerEmail,
-    metrics: context.metrics,
+    report: context.report,
     resendId: data?.id,
   };
 }
