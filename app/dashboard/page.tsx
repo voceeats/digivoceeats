@@ -823,6 +823,15 @@ function HoursTab({ restaurantId }: { restaurantId: string }) {
       prep_time_minutes: prepTime,
       last_order_minutes_before_close: lastOrder,
     }).eq("id", restaurantId);
+    try {
+      await fetch("/api/menu/sync-retell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+    } catch (e) {
+      console.error("Retell sync after hours save failed:", e);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
     setSaving(false);
@@ -1534,6 +1543,15 @@ export default function Dashboard() {
     hoursOverrideRef.current = { value: newIsOpen, untilMs };
     setIsOpen(newIsOpen);
     await supabase.from("restaurants").update({ is_open: newIsOpen }).eq("id", restaurant.id);
+    try {
+      await fetch("/api/menu/sync-retell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId: restaurant.id }),
+      });
+    } catch (e) {
+      console.error("Retell sync after toggle failed:", e);
+    }
   };
 
   const handleSignOut = async () => {

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase";
+import { formatRestaurantHoursBlock } from "./restaurant-hours";
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY!;
 const RETELL_BASE_URL = "https://api.retellai.com";
@@ -42,6 +43,8 @@ export type RetellPromptOptions = {
   menuText: string;
   taxPct: string;
   phone?: string;
+  restaurantHours: string;
+  lastOrderMinutesBeforeClose: number;
 };
 
 export function buildRetellOrderFlowPrompt({
@@ -50,24 +53,35 @@ export function buildRetellOrderFlowPrompt({
   menuText,
   taxPct,
   phone,
+  restaurantHours,
+  lastOrderMinutesBeforeClose,
 }: RetellPromptOptions): string {
   return `You are Chloe, a friendly order taker for ${restaurantName}, powered by DigiVoceEats.
 
-IMPORTANT: Say the greeting IMMEDIATELY when the call starts — BEFORE calling any functions. After the customer speaks, respond to them IMMEDIATELY before calling any functions.
+IMPORTANT: Say the greeting IMMEDIATELY when the call starts if the restaurant is open. After the customer speaks, respond to them IMMEDIATELY.
 
 ==================================================
-STEP 1 — GREET IMMEDIATELY (no function calls yet):
-Say instantly: "Thanks for calling ${restaurantName}, this is Chloe! What can I get for you today?"
+RESTAURANT HOURS:
+${restaurantHours}
+
+HOURS CHECK RULE:
+- Current time is ${"{{current_time_America/New_York}}"} (Eastern Time).
+- Check current time against these hours yourself — do NOT call any function.
+- If manual status is CLOSED, or outside hours, or past last-order cutoff (${lastOrderMinutesBeforeClose} minutes before close): say "Sorry we are currently closed. Our hours are [relevant day hours]. Have a great day!" and call end_call.
+- Stop taking orders ${lastOrderMinutesBeforeClose} minutes before closing time.
+- If open: proceed with greeting immediately.
 
 ==================================================
-STEP 2 — RESPOND FIRST, THEN CHECK HOURS:
+STEP 1 — GREET IMMEDIATELY (no function calls):
+If open per HOURS CHECK RULE, say instantly: "Thanks for calling ${restaurantName}, this is Chloe! What can I get for you today?"
+
+==================================================
+STEP 2 — RESPOND TO CUSTOMER:
 Flow after greeting:
 1. Customer speaks.
-2. Respond to the customer IMMEDIATELY — do NOT call any functions before responding.
-3. Then call check_restaurant_hours silently in the background (do not pause or announce).
-4. Remember ${"{{user_number}}"} — you will need it in STEP 6 and STEP 7.
-5. If the restaurant is closed (is_open is false or accepting_orders is false): politely tell the customer "[reason]. Have a great day!" and call end_call.
-6. If open: continue taking the order (STEP 3).
+2. Respond to the customer IMMEDIATELY.
+3. Remember ${"{{user_number}}"} — you will need it in STEP 6 and STEP 7.
+4. Continue taking the order (STEP 3).
 
 ==================================================
 STEP 3 — TAKE ORDER:
@@ -125,9 +139,9 @@ Then call end_call.
 
 ==================================================
 CRITICAL RULES:
-- GREET INSTANTLY — no delays, no function calls before greeting.
-- After greeting, respond to the customer IMMEDIATELY without calling any functions first.
-- Only call check_restaurant_hours AFTER the customer speaks for the first time — and only AFTER you have responded to them.
+- GREET INSTANTLY if open — no delays, no function calls for hours checking.
+- Check hours from RESTAURANT HOURS above using current time — never call check_restaurant_hours.
+- After greeting, respond to the customer IMMEDIATELY.
 - When reading payment code: say digits only with a pause between them — NO words like "dot" "dash" "point" between digits.
 - Always repeat the URL and code twice.
 - NEVER mention SMS or text messages.
@@ -148,23 +162,6 @@ ${menuText}
 Tax rate: ${taxPct}%
 Restaurant: ${restaurantName}${phone ? `\nRestaurant phone: ${phone}` : ""}
 All meat is Halal.`;
-}
-
-export function buildCheckHoursTool(appUrl: string, restaurantId: string) {
-  return {
-    type: "custom",
-    name: "check_restaurant_hours",
-    description:
-      "Check if the restaurant is open and accepting orders. Call ONLY AFTER the customer speaks for the first time AND you have responded to them — never before greeting or before your first response to the customer.",
-    url: `${appUrl}/api/restaurant/hours?restaurantId=${restaurantId}`,
-    method: "GET",
-    speak_during_execution: false,
-    speak_after_execution: false,
-    parameters: {
-      type: "object",
-      properties: {},
-    },
-  };
 }
 
 export function buildSubmitOrderTool(appUrl: string) {
@@ -211,7 +208,6 @@ export function buildSubmitOrderTool(appUrl: string) {
 export function mergeRetellGeneralTools(
   existing: unknown[],
   appUrl: string,
-  restaurantId: string,
 ): unknown[] {
   const reserved = new Set([
     "check_restaurant_hours",
@@ -223,10 +219,7 @@ export function mergeRetellGeneralTools(
     (t: { name?: string }) => !reserved.has(t?.name ?? ""),
   );
 
-  tools.push(
-    buildCheckHoursTool(appUrl, restaurantId),
-    buildSubmitOrderTool(appUrl),
-  );
+  tools.push(buildSubmitOrderTool(appUrl));
 
   const hasEndCall = tools.some(
     (t: { type?: string; name?: string }) =>
@@ -256,6 +249,8 @@ export function buildMenuPrompt(
   }>,
   restaurantId?: string,
   taxPct = "8.75",
+  restaurantHours = "Hours not configured.",
+  lastOrderMinutesBeforeClose = 45,
 ): string {
   const availableItems = items
     .filter((i) => i.is_available)
@@ -274,6 +269,8 @@ export function buildMenuPrompt(
     menuText,
     taxPct,
     phone,
+    restaurantHours,
+    lastOrderMinutesBeforeClose,
   });
 }
 
@@ -309,12 +306,19 @@ export async function syncMenuToRetell(restaurantId: string) {
 
   const taxPct = ((restaurant.tax_rate ?? 0.06) * 100).toFixed(1);
 
+  const restaurantHours = formatRestaurantHoursBlock(restaurant.opening_hours, {
+    isOpen: restaurant.is_open !== false,
+    lastOrderMinutesBeforeClose: restaurant.last_order_minutes_before_close ?? 45,
+  });
+
   const prompt = buildMenuPrompt(
     restaurant.name,
     restaurant.phone || "",
     menuItems,
     restaurantId,
     taxPct,
+    restaurantHours,
+    restaurant.last_order_minutes_before_close ?? 45,
   );
 
   const response = await fetch(
@@ -363,6 +367,12 @@ export async function createRetellAgent(restaurantId: string) {
         restaurant.phone || "",
         [],
         restaurantId,
+        ((restaurant.tax_rate ?? 0.06) * 100).toFixed(1),
+        formatRestaurantHoursBlock(restaurant.opening_hours, {
+          isOpen: restaurant.is_open !== false,
+          lastOrderMinutesBeforeClose: restaurant.last_order_minutes_before_close ?? 45,
+        }),
+        restaurant.last_order_minutes_before_close ?? 45,
       ),
       voice_id: "11labs-Adrian",
       language: "en-US",

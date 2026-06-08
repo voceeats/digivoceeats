@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { formatRestaurantHoursBlock } from "@/lib/restaurant-hours";
 import {
   buildRetellOrderFlowPrompt,
   formatMenuTextForPrompt,
@@ -80,6 +81,12 @@ export async function POST(request: NextRequest) {
 
     const taxRate = restaurant.tax_rate || 0.06;
     const taxPct = (taxRate * 100).toFixed(1);
+    const lastOrderMinutes = restaurant.last_order_minutes_before_close ?? 45;
+
+    const restaurantHours = formatRestaurantHoursBlock(restaurant.opening_hours, {
+      isOpen: restaurant.is_open !== false,
+      lastOrderMinutesBeforeClose: lastOrderMinutes,
+    });
 
     const prompt = buildRetellOrderFlowPrompt({
       restaurantName: restaurant.name,
@@ -87,12 +94,13 @@ export async function POST(request: NextRequest) {
       menuText,
       taxPct,
       phone: restaurant.phone || undefined,
+      restaurantHours,
+      lastOrderMinutesBeforeClose: lastOrderMinutes,
     });
 
     const general_tools = mergeRetellGeneralTools(
       llmExisting.general_tools,
       appUrl,
-      restaurantId,
     );
 
     const llmResponse = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {

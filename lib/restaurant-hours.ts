@@ -16,6 +16,55 @@ const DAY_ORDER = [
   "saturday",
 ];
 
+const PROMPT_DAY_ORDER = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;
+
+const PROMPT_DAY_LABELS: Record<string, string> = {
+  monday: "Monday",
+  tuesday: "Tuesday",
+  wednesday: "Wednesday",
+  thursday: "Thursday",
+  friday: "Friday",
+  saturday: "Saturday",
+  sunday: "Sunday",
+};
+
+/** Human-readable weekly hours for Retell prompt (Monday–Sunday). */
+export function formatOpeningHoursForPrompt(
+  openingHours: OpeningHours | null | undefined,
+): string {
+  if (!openingHours || Object.keys(openingHours).length === 0) {
+    return "Hours not configured.";
+  }
+
+  return PROMPT_DAY_ORDER.map((day) => {
+    const hours = openingHours[day];
+    const label = PROMPT_DAY_LABELS[day];
+    if (!hours || hours.is_closed) return `${label}: Closed`;
+    const [openH, openM] = hours.open.split(":").map(Number);
+    const [closeH, closeM] = hours.close.split(":").map(Number);
+    return `${label}: ${formatDisplayTime(openH, openM)} - ${formatDisplayTime(closeH, closeM)}`;
+  }).join("\n");
+}
+
+export function formatRestaurantHoursBlock(
+  openingHours: OpeningHours | null | undefined,
+  options: { isOpen: boolean; lastOrderMinutesBeforeClose: number },
+): string {
+  return `${formatOpeningHoursForPrompt(openingHours)}
+
+Manual status: ${options.isOpen ? "OPEN" : "CLOSED"} (owner toggle — if CLOSED, never take orders)
+Last order cutoff: ${options.lastOrderMinutesBeforeClose} minutes before closing each day
+Timezone: America/New_York (ET)`;
+}
+
 export function getETNow() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-US", {
