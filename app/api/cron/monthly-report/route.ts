@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { previousCalendarMonth } from "@/lib/monthly-report";
-import { sendMonthlyReportsForAll } from "@/lib/monthly-report-email";
+import { previousCalendarMonth } from "@/lib/email/report-data";
+import { sendMonthlyReportsForAll } from "@/lib/email/send-report";
 
 export async function GET(request: NextRequest) {
   return runMonthlyCron(request);

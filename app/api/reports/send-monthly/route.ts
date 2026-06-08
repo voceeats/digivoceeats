@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   sendMonthlyReportForRestaurant,
   sendMonthlyReportsForAll,
-} from "@/lib/monthly-report-email";
+} from "@/lib/email/send-report";
 
 async function verifyAdmin(request: NextRequest) {
   const authHeader = request.headers.get("authorization");

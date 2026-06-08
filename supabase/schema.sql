@@ -172,6 +172,24 @@ create table if not exists public.calls (
 create index if not exists calls_restaurant_id_idx on public.calls(restaurant_id);
 create index if not exists calls_created_at_idx on public.calls(created_at);
 
+-- EMAIL LOGS (monthly report tracking)
+create table if not exists public.email_logs (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid references public.restaurants(id) on delete cascade,
+  recipient_email text not null,
+  report_type text not null default 'monthly',
+  report_month integer not null,
+  report_year integer not null,
+  status text not null default 'sent',
+  error_message text,
+  resend_id text,
+  metrics jsonb,
+  created_at timestamptz default now()
+);
+
+create index if not exists email_logs_restaurant_id_idx on public.email_logs(restaurant_id);
+create index if not exists email_logs_created_at_idx on public.email_logs(created_at desc);
+
 -- PRINTERS
 create table public.printers (
   id uuid primary key default gen_random_uuid(),
