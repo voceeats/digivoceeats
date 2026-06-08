@@ -13,13 +13,6 @@ const supabase = createClient(
 
 const PLATFORM_FEE = 0.15;
 
-const STATUS: Record<string, { label: string; color: string }> = {
-  pending:   { label: "New Order",  color: "#FF6B35" },
-  accepted:  { label: "Accepted",   color: "#00C896" },
-  completed: { label: "Done",       color: "#6B7280" },
-  rejected:  { label: "Rejected",   color: "#EF4444" },
-};
-
 /** Restaurant sees paid orders, in-progress orders, and unpaid pay-at-restaurant orders (for payment code). */
 function isVisibleToRestaurant(order: { status?: string; payment_status?: string | null }) {
   if (order.payment_status === "paid" || order.payment_status === "cash_collected") return true;
@@ -27,20 +20,26 @@ function isVisibleToRestaurant(order: { status?: string; payment_status?: string
   return order.status !== "pending_payment";
 }
 
-/** Alert on new orders staff should action — including unpaid voice orders awaiting payment. */
+function isAwaitingPayment(order: { status?: string; payment_status?: string | null }) {
+  return order.status === "pending_payment" && order.payment_status === "unpaid";
+}
+
+function isNewPaidOrder(order: { status?: string; payment_status?: string | null }) {
+  return order.status === "pending" && order.payment_status === "paid";
+}
+
+/** Sound/toast alert only when a paid order is ready for accept/reject. */
 function isNewOrderAlert(order: { status?: string; payment_status?: string | null }) {
-  if (order.payment_status === "paid") return order.status === "pending";
-  if (order.status === "pending_payment" && order.payment_status === "unpaid") return true;
-  if (order.status !== "pending") return false;
-  return order.payment_status !== "unpaid";
+  return isNewPaidOrder(order);
 }
 
-function isUnpaidPendingPayment(order: { payment_status?: string | null; status?: string | null }) {
-  return order.payment_status === "unpaid" || order.status === "pending_payment";
-}
-
-function isOrderPaid(order: { payment_status?: string | null }) {
-  return order.payment_status === "paid" || order.payment_status === "cash_collected";
+function getOrderBadge(order: { status?: string; payment_status?: string | null }) {
+  if (isAwaitingPayment(order)) return { label: "Awaiting Payment", color: "#F59E0B" };
+  if (isNewPaidOrder(order)) return { label: "New Order", color: "#00C896" };
+  if (order.status === "accepted") return { label: "Preparing", color: "#3B82F6" };
+  if (order.status === "completed") return { label: "Completed", color: "#6B7280" };
+  if (order.status === "rejected") return { label: "Rejected", color: "#EF4444" };
+  return { label: "Pending", color: "#FF6B35" };
 }
 
 function timeAgo(iso: string) {
@@ -133,12 +132,13 @@ const S = {
 };
 
 function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, status: string) => void }) {
-  const [expanded, setExpanded] = useState(order.status === "pending");
+  const awaiting = isAwaitingPayment(order);
+  const isNew = isNewPaidOrder(order);
+  const [expanded, setExpanded] = useState(isNew || awaiting);
   const [loading, setLoading] = useState<string | null>(null);
-  const cfg = STATUS[order.status] || STATUS.pending;
-  const isNew = order.status === "pending";
-  const showPaymentCode = isUnpaidPendingPayment(order) && !!order.payment_code;
-  const paid = isOrderPaid(order);
+  const badge = getOrderBadge(order);
+  const showPaymentCode = awaiting && !!order.payment_code;
+  const showAcceptReject = isNew;
 
   const doAction = async (action: string) => {
     setLoading(action);
@@ -183,11 +183,13 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
     browserPrint(po);
   };
 
+  const accent = isNew ? "#00C896" : awaiting ? "#F59E0B" : null;
+
   return (
     <div style={{
       ...S.card,
-      border: isNew ? "1px solid rgba(255,107,53,0.35)" : "1px solid rgba(255,255,255,0.07)",
-      background: isNew ? "rgba(255,107,53,0.04)" : "rgba(255,255,255,0.02)",
+      border: accent ? `1px solid ${accent}59` : "1px solid rgba(255,255,255,0.07)",
+      background: accent ? `${accent}0A` : "rgba(255,255,255,0.02)",
       marginBottom: 12,
     }}>
       <div
@@ -197,20 +199,16 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{
             width: 46, height: 46, borderRadius: 13,
-            background: isNew ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.05)",
+            background: accent ? `${accent}26` : "rgba(255,255,255,0.05)",
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-            border: isNew ? "1px solid rgba(255,107,53,0.3)" : "1px solid rgba(255,255,255,0.07)",
+            border: accent ? `1px solid ${accent}4D` : "1px solid rgba(255,255,255,0.07)",
           }}>📞</div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
               <span style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 15 }}>
                 {order.customer_name || "Voice Customer"}
               </span>
-              <span style={S.badge(cfg.color)}>{cfg.label}</span>
-              {paid && <span style={S.badge("#00C896")}>✅ PAID</span>}
-              {!paid && isUnpaidPendingPayment(order) && !order.payment_code && (
-                <span style={S.badge("#F59E0B")}>⏳ Awaiting Payment</span>
-              )}
+              <span style={S.badge(badge.color)}>{badge.label}</span>
               {order.payment_method === "cash" && <span style={S.badge("#6B7280")}>💵 Cash</span>}
             </div>
             <div style={{ color: "#6B7280", fontSize: 12 }}>
@@ -312,7 +310,7 @@ function OrderCard({ order, onUpdate }: { order: any; onUpdate: (id: string, sta
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {order.status === "pending" && (
+            {showAcceptReject && (
               <>
                 <button onClick={() => doAction("accept")} disabled={!!loading} style={{ ...S.btn("#00C896"), flex: 1, fontSize: 14, padding: "13px" }}>
                   {loading === "accept" ? "..." : "✅ Accept Order"}
@@ -1334,7 +1332,12 @@ export default function Dashboard() {
   const [orderToasts, setOrderToasts] = useState<{ key: string; orderNumber: string }[]>([]);
 
   const pending = useMemo(
-    () => orders.filter((o) => o.status === "pending").length,
+    () => orders.filter((o) => isNewPaidOrder(o)).length,
+    [orders],
+  );
+
+  const awaitingPayment = useMemo(
+    () => orders.filter((o) => isAwaitingPayment(o)).length,
     [orders],
   );
 
@@ -1561,11 +1564,10 @@ export default function Dashboard() {
             if (idx >= 0) return prev.map((o) => (o.id === row.id ? { ...o, ...row } : o));
             return [row as any, ...prev];
           });
-          const becamePaidPending =
-            row.status === "pending" &&
-            row.payment_status === "paid" &&
-            old?.status === "pending_payment";
-          if (becamePaidPending) {
+          const becameNewPaidOrder =
+            isNewOrderAlert(row as { status?: string; payment_status?: string | null }) &&
+            !isNewOrderAlert(old as { status?: string; payment_status?: string | null });
+          if (becameNewPaidOrder) {
             addOrderAlert(String(row.id), String(row.order_number ?? row.id));
           }
         },
@@ -1662,7 +1664,14 @@ export default function Dashboard() {
   const todayRevenue = todayOrders
     .filter(o => !["rejected", "cancelled"].includes(o.status))
     .reduce((s, o) => s + (o.restaurant_payout || 0), 0);
-  const filtered = filter === "all" ? orders : orders.filter(o => o.status === filter);
+  const filtered =
+    filter === "all"
+      ? orders
+      : filter === "awaiting"
+        ? orders.filter(isAwaitingPayment)
+        : filter === "pending"
+          ? orders.filter(isNewPaidOrder)
+          : orders.filter((o) => o.status === filter);
 
   const tabs = [
     { id: "orders", label: "Orders", icon: "📋", count: pending },
@@ -1674,10 +1683,10 @@ export default function Dashboard() {
   ];
 
   const statCards = [
-    { icon: "🔔", label: "Pending", value: pending, color: "#FF6B35", sub: pending > 0 ? "Action needed" : "All clear" },
+    { icon: "🔔", label: "New Orders", value: pending, color: "#00C896", sub: pending > 0 ? "Accept or reject" : "All clear" },
+    { icon: "⏳", label: "Awaiting Payment", value: awaitingPayment, color: "#F59E0B", sub: awaitingPayment > 0 ? "Payment codes out" : "None waiting" },
     { icon: "💰", label: "Today's Payout", value: `$${todayRevenue.toFixed(0)}`, color: "#00C896", sub: "Your 85%" },
     { icon: "🛍️", label: "Total Orders", value: orders.length, color: "#6366F1", sub: "All time" },
-    { icon: "📞", label: "Voice Orders", value: orders.filter(o => o.source === "voice_ai").length, color: "#F59E0B", sub: "Via AI" },
   ];
 
   return (
@@ -1851,13 +1860,20 @@ export default function Dashboard() {
         {tab === "orders" && (
           <div>
             <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-              {["all", "pending", "accepted", "completed", "rejected"].map(f => (
+              {[
+                { id: "all", label: "all", count: orders.length },
+                { id: "awaiting", label: "awaiting payment", count: awaitingPayment },
+                { id: "pending", label: "new orders", count: pending },
+                { id: "accepted", label: "preparing", count: orders.filter((o) => o.status === "accepted").length },
+                { id: "completed", label: "completed", count: orders.filter((o) => o.status === "completed").length },
+                { id: "rejected", label: "rejected", count: orders.filter((o) => o.status === "rejected").length },
+              ].map((f) => (
                 <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  style={{ padding: "6px 16px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 12, textTransform: "capitalize", background: filter === f ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.04)", color: filter === f ? "#FF6B35" : "#6B7280", outline: filter === f ? "1px solid rgba(255,107,53,0.3)" : "1px solid rgba(255,255,255,0.06)", fontFamily: "sans-serif" }}
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  style={{ padding: "6px 16px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 12, textTransform: "capitalize", background: filter === f.id ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.04)", color: filter === f.id ? "#FF6B35" : "#6B7280", outline: filter === f.id ? "1px solid rgba(255,107,53,0.3)" : "1px solid rgba(255,255,255,0.06)", fontFamily: "sans-serif" }}
                 >
-                  {f} ({f === "all" ? orders.length : orders.filter(o => o.status === f).length})
+                  {f.label} ({f.count})
                 </button>
               ))}
             </div>
@@ -1935,7 +1951,8 @@ export default function Dashboard() {
                 rows: [
                   ["Total Orders", orders.length, "#F9FAFB"],
                   ["Completed", orders.filter(o => o.status === "completed").length, "#00C896"],
-                  ["Pending", orders.filter(o => o.status === "pending").length, "#FF6B35"],
+                  ["New Orders", orders.filter(isNewPaidOrder).length, "#00C896"],
+                  ["Awaiting Payment", orders.filter(isAwaitingPayment).length, "#F59E0B"],
                   ["Rejected", orders.filter(o => o.status === "rejected").length, "#EF4444"],
                   ["Voice AI Orders", orders.filter(o => o.source === "voice_ai").length, "#6366F1"],
                 ],
