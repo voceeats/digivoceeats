@@ -1745,7 +1745,10 @@ export default function Dashboard() {
 
       {fullScreenAlert && (
         <div
-          onClick={() => setFullScreenAlert(false)}
+          onClick={() => {
+            setFullScreenAlert(false);
+            silenceAlerts();
+          }}
           style={{
             position: "fixed",
             inset: 0,
