@@ -125,7 +125,9 @@ function OrderCard({
   const [expanded, setExpanded] = useState(isNew || awaiting);
   const [loading, setLoading] = useState<string | null>(null);
   const badge = getOrderBadge(order);
-  const showPaymentCode = !!order.payment_code && order.payment_status !== "paid";
+  const showPaymentCode = !!order.payment_code &&
+    order.payment_status !== "paid" &&
+    order.payment_status !== "cash_collected";
   const showAcceptReject =
     (order.status === "pending" && order.payment_status === "paid") ||
     (order.status === "pending_payment" && order.payment_status === "unpaid");
