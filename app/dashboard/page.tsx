@@ -1347,6 +1347,7 @@ export default function Dashboard() {
 
   const [soundActive, setSoundActive] = useState(false);
   const [orderToasts, setOrderToasts] = useState<{ key: string; orderNumber: string }[]>([]);
+  const [fullScreenAlert, setFullScreenAlert] = useState(false);
 
   const pending = useMemo(
     () => orders.filter((o) => isNewPaidOrder(o) || isAwaitingPayment(o)).length,
@@ -1417,6 +1418,7 @@ export default function Dashboard() {
         setOrderToasts((prev) => prev.filter((t) => t.key !== key));
       }, 10000);
       setSoundActive(true);
+      setFullScreenAlert(true);
       void ringBell();
     },
     [ringBell],
@@ -1740,6 +1742,59 @@ export default function Dashboard() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
       `}</style>
+
+      {fullScreenAlert && (
+        <div
+          onClick={() => setFullScreenAlert(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.92)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            animation: "fadeIn 0.2s ease",
+          }}
+        >
+          <style>{`
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes bounceIn { 0% { transform: scale(0.5); opacity: 0; } 70% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+            @keyframes ringPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+          `}</style>
+          <div style={{ animation: "bounceIn 0.5s ease both", textAlign: "center" }}>
+            <div style={{ fontSize: 100, animation: "ringPulse 1s infinite", marginBottom: 24 }}>🔔</div>
+            <div style={{
+              fontSize: 64,
+              fontWeight: 900,
+              color: "#FF6B35",
+              letterSpacing: -2,
+              lineHeight: 1,
+              marginBottom: 16,
+              fontFamily: "sans-serif",
+            }}>
+              NEW ORDER
+            </div>
+            <div style={{ color: "#9CA3AF", fontSize: 20, marginBottom: 48, fontFamily: "sans-serif" }}>
+              Tap anywhere to view
+            </div>
+            <div style={{
+              background: "rgba(255,107,53,0.15)",
+              border: "2px solid rgba(255,107,53,0.4)",
+              borderRadius: 20,
+              padding: "20px 48px",
+              color: "#FF6B35",
+              fontSize: 18,
+              fontWeight: 700,
+              fontFamily: "sans-serif",
+            }}>
+              👆 Tap to Accept or Reject
+            </div>
+          </div>
+        </div>
+      )}
 
       {orderToasts.length > 0 && (
         <div
