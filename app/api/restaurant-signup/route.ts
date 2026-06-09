@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
                 <div style="color:#b5853a;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;font-family:Arial,sans-serif;">What happens next</div>
                 ${["Our team reviews your application", "We call you to discuss your setup", "We configure your AI phone line", "You go live and start taking voice orders"].map((s, i) => `
                   <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;">
-                    <div style="width:24px;height:24px;border-radius:50%;background:rgba(181,133,58,0.15);border:1px solid rgba(181,133,58,0.3);display:flex;align-items:center;justify-content:center;font-size:11px;color:#b5853a;font-weight:700;flex-shrink:0;font-family:Arial,sans-serif;">${i + 1}</div>
+                    <div style="width:24px;height:24px;min-width:24px;border-radius:50%;background:rgba(181,133,58,0.15);border:1px solid rgba(181,133,58,0.3);text-align:center;line-height:24px;font-size:11px;color:#b5853a;font-weight:700;font-family:Arial,sans-serif;">${i + 1}</div>
                     <span style="color:#6b4c2a;font-size:14px;line-height:1.5;padding-top:2px;">${s}</span>
                   </div>`).join("")}
               </div>
