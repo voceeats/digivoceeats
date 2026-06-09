@@ -22,7 +22,8 @@ function isVisibleToRestaurant(order: { status?: string; payment_status?: string
 }
 
 function isAwaitingPayment(order: { status?: string; payment_status?: string | null }) {
-  return order.status === "pending_payment" && order.payment_status === "unpaid";
+  return order.payment_status === "unpaid" &&
+    !["completed", "rejected", "cancelled"].includes(order.status ?? "");
 }
 
 function isNewPaidOrder(order: { status?: string; payment_status?: string | null }) {
@@ -127,7 +128,9 @@ function OrderCard({
   const badge = getOrderBadge(order);
   const showPaymentCode = !!order.payment_code &&
     order.payment_status !== "paid" &&
-    order.payment_status !== "cash_collected";
+    order.payment_status !== "cash_collected" &&
+    order.status !== "completed" &&
+    order.status !== "rejected";
   const showAcceptReject =
     (order.status === "pending" && order.payment_status === "paid") ||
     (order.status === "pending_payment" && order.payment_status === "unpaid");
@@ -1655,16 +1658,9 @@ export default function Dashboard() {
   };
 
   const updateOrder = (id: string, status: string) => {
-    const statusToPayment: Record<string, string> = {
-      accepted: "paid",
-      completed: "paid",
-      rejected: "paid",
-    };
     setOrders((prev) =>
       prev.map((o) =>
-        o.id === id
-          ? { ...o, status, payment_status: statusToPayment[status] ?? o.payment_status }
-          : o
+        o.id === id ? { ...o, status } : o
       )
     );
   };
