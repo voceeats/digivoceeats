@@ -49,6 +49,40 @@ function spokenCode(code: string) {
   return code.split("").join(" ... ");
 }
 
+function formatPhone(raw: string): string {
+  // Strip everything except digits
+  const digits = raw.replace(/\D/g, "");
+  // Remove leading 1 (country code)
+  const local = digits.startsWith("1") && digits.length === 11
+    ? digits.slice(1)
+    : digits;
+  if (local.length === 10) {
+    return `${local.slice(0,3)}-${local.slice(3,6)}-${local.slice(6)}`;
+  }
+  return local;
+}
+
+async function storeTempData(
+  callId: string,
+  code: string,
+  rawPhone: string
+) {
+  const formatted = formatPhone(rawPhone);
+  const spoken = code.split("").join(" ... ");
+  try {
+    await supabaseAdmin.from("call_temp_data").upsert({
+      call_id: callId,
+      payment_code: code,
+      payment_code_spoken: spoken,
+      customer_phone: rawPhone,
+      customer_phone_formatted: formatted,
+      expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    }, { onConflict: "call_id" });
+  } catch (e) {
+    console.error("storeTempData failed:", e);
+  }
+}
+
 async function findOrderByRetellCallId(callId: string) {
   const { data } = await supabaseAdmin
     .from("orders")
@@ -225,11 +259,19 @@ export async function POST(request: NextRequest) {
       await linkCallToOrder(callId, order.id, restaurantId);
     }
 
+    const finalCode = order!.payment_code ?? code;
+    const rawPhone = args.customer_phone ? String(args.customer_phone) : "";
+
+    if (callId && rawPhone) {
+      await storeTempData(callId, finalCode, rawPhone);
+    }
+
     return NextResponse.json({
       order_id: order!.id,
       order_number: order!.order_number,
-      payment_code: order!.payment_code ?? code,
-      payment_code_spoken: spokenCode(order!.payment_code ?? code),
+      payment_code: finalCode,
+      payment_code_spoken: spokenCode(finalCode),
+      customer_phone_formatted: formatPhone(rawPhone),
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "submit_order failed";
