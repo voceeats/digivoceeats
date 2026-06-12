@@ -16,9 +16,7 @@ const PLATFORM_FEE = 0.15;
 
 /** Restaurant sees paid orders, in-progress orders, and unpaid pay-at-restaurant orders (for payment code). */
 function isVisibleToRestaurant(order: { status?: string; payment_status?: string | null }) {
-  if (order.payment_status === "paid" || order.payment_status === "cash_collected") return true;
-  if (order.status === "pending_payment" && order.payment_status === "unpaid") return true;
-  return order.status !== "pending_payment";
+  return order.payment_status === "paid" || order.payment_status === "cash_collected";
 }
 
 function isAwaitingPayment(order: { status?: string; payment_status?: string | null }) {
