@@ -102,6 +102,14 @@ Your order is being prepared!`;
   );
 }
 
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  if (digits.startsWith("+")) return raw;
+  return `+1${digits}`;
+}
+
 export async function sendDirectPaymentLink(params: {
   to: string;
   restaurantName: string;
@@ -109,11 +117,12 @@ export async function sendDirectPaymentLink(params: {
   orderId: string;
   total: number;
 }): Promise<boolean> {
+  const phone = normalizePhone(params.to);
   const directUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${params.orderId}`;
   const body = `DigiVoceEats: Your ${params.restaurantName} order is confirmed. Pay now: ${directUrl} Total: $${params.total.toFixed(2)}. Reply STOP to opt out.`;
 
   return tryTwilioThenSns(
-    () => twilioSendRawSms(params.to, body),
-    () => snsSendSms({ to: params.to, body }),
+    () => twilioSendRawSms(phone, body),
+    () => snsSendSms({ to: phone, body }),
   );
 }

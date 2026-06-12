@@ -125,12 +125,11 @@ function OrderCard({
   const isNew = isNewPaidOrder(order);
   const [expanded, setExpanded] = useState(isNew || awaiting);
   const [loading, setLoading] = useState<string | null>(null);
+  const [smsPhone, setSmsPhone] = useState(order.customer_phone || "");
+  const [smsSent, setSmsSent] = useState(false);
+  const [smsError, setSmsError] = useState("");
   const badge = getOrderBadge(order);
-  const showPaymentCode = !!order.payment_code &&
-    order.payment_status !== "paid" &&
-    order.payment_status !== "cash_collected" &&
-    order.status !== "completed" &&
-    order.status !== "rejected";
+  const showPaymentCode = false;
   const showAcceptReject =
     (order.status === "pending" && order.payment_status === "paid") ||
     (order.status === "pending_payment" && order.payment_status === "unpaid");
@@ -339,43 +338,76 @@ function OrderCard({
             </div>
           </div>
 
+          {/* Send SMS Payment Link */}
+          {order.payment_status !== "paid" && order.payment_status !== "cash_collected" && order.status !== "rejected" && order.status !== "completed" && (
+            <div style={{
+              padding: "16px 22px",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+              background: "rgba(0,200,150,0.04)",
+              marginBottom: 20,
+            }}>
+              <div style={{ color: "#9CA3AF", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
+                Send Payment Link via SMS
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="tel"
+                  value={smsPhone}
+                  onChange={e => { setSmsPhone(e.target.value); setSmsSent(false); setSmsError(""); }}
+                  placeholder="Customer phone number"
+                  style={{
+                    flex: 1, minWidth: 160,
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 8, padding: "9px 14px",
+                    color: "#F9FAFB", fontSize: 13,
+                    fontFamily: "sans-serif", outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={!!loading || smsSent}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setLoading("sms");
+                    setSmsError("");
+                    try {
+                      const res = await fetch(`/api/orders/${order.id}/resend-sms`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ phone: smsPhone }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setSmsSent(true);
+                      } else {
+                        setSmsError(data.error || "Failed to send");
+                      }
+                    } catch {
+                      setSmsError("Network error");
+                    }
+                    setLoading(null);
+                  }}
+                  style={{
+                    ...S.btn(smsSent ? "#00C896" : "#3B82F6"),
+                    padding: "9px 18px", fontSize: 13,
+                    opacity: loading === "sms" ? 0.7 : 1,
+                  }}
+                >
+                  {loading === "sms" ? "Sending..." : smsSent ? "✅ Sent!" : "📱 Send SMS Link"}
+                </button>
+              </div>
+              {smsError && <div style={{ color: "#EF4444", fontSize: 12, marginTop: 6 }}>{smsError}</div>}
+              {smsSent && <div style={{ color: "#00C896", fontSize: 12, marginTop: 6 }}>Payment link sent to {smsPhone}</div>}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {order.status === "accepted" && (
               <button onClick={() => doAction("complete")} disabled={!!loading} style={{ ...S.btn("#F59E0B"), flex: 1, fontSize: 14, padding: "13px" }}>
                 {loading === "complete" ? "..." : "🍽️ Mark Completed"}
               </button>
             )}
-            <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>💳 Send Payment Link</button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!order.customer_phone) {
-                  alert("No phone number on this order.");
-                  return;
-                }
-                try {
-                  const res = await fetch(`/api/orders/${order.id}/resend-sms`, {
-                    method: "POST",
-                  });
-                  const data = await res.json();
-                  if (data.success) {
-                    alert(`Payment link sent to ${order.customer_phone}`);
-                  } else {
-                    alert(`Failed: ${data.error}`);
-                  }
-                } catch {
-                  alert("Failed to send SMS.");
-                }
-              }}
-              style={{
-                ...S.btn("rgba(255,255,255,0.08)", true),
-                color: "#9CA3AF",
-                fontSize: 12,
-                padding: "8px 14px",
-              }}
-            >
-              📱 Resend SMS
-            </button>
             <button type="button" onClick={() => handlePrint()} style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>🖨️ Print</button>
           </div>
         </div>
