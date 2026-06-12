@@ -346,6 +346,36 @@ function OrderCard({
               </button>
             )}
             <button style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>💳 Send Payment Link</button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!order.customer_phone) {
+                  alert("No phone number on this order.");
+                  return;
+                }
+                try {
+                  const res = await fetch(`/api/orders/${order.id}/resend-sms`, {
+                    method: "POST",
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    alert(`Payment link sent to ${order.customer_phone}`);
+                  } else {
+                    alert(`Failed: ${data.error}`);
+                  }
+                } catch {
+                  alert("Failed to send SMS.");
+                }
+              }}
+              style={{
+                ...S.btn("rgba(255,255,255,0.08)", true),
+                color: "#9CA3AF",
+                fontSize: 12,
+                padding: "8px 14px",
+              }}
+            >
+              📱 Resend SMS
+            </button>
             <button type="button" onClick={() => handlePrint()} style={{ ...S.btn("rgba(255,255,255,0.08)", true), color: "#9CA3AF", fontSize: 13 }}>🖨️ Print</button>
           </div>
         </div>
