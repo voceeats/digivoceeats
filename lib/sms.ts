@@ -101,3 +101,19 @@ Your order is being prepared!`;
     },
   );
 }
+
+export async function sendDirectPaymentLink(params: {
+  to: string;
+  restaurantName: string;
+  orderNumber: string;
+  orderId: string;
+  total: number;
+}): Promise<boolean> {
+  const directUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${params.orderId}`;
+  const body = `DigiVoceEats: Your ${params.restaurantName} order is confirmed. Pay now: ${directUrl} Total: $${params.total.toFixed(2)}. Reply STOP to opt out.`;
+
+  return tryTwilioThenSns(
+    () => twilioSendRawSms(params.to, body),
+    () => snsSendSms({ to: params.to, body }),
+  );
+}

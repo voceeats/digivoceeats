@@ -259,6 +259,29 @@ export async function POST(request: NextRequest) {
       await linkCallToOrder(callId, order.id, restaurantId);
     }
 
+    // Send direct payment SMS if customer provided phone
+    if (orderData.customer_phone && order?.id) {
+      try {
+        const { sendDirectPaymentLink } = await import("@/lib/sms");
+        const { data: restaurant } = await supabaseAdmin
+          .from("restaurants")
+          .select("name")
+          .eq("id", restaurantId)
+          .single();
+
+        await sendDirectPaymentLink({
+          to: orderData.customer_phone,
+          restaurantName: restaurant?.name ?? "Restaurant",
+          orderNumber: order.order_number,
+          orderId: order.id,
+          total,
+        });
+        console.log(`📱 SMS sent to ${orderData.customer_phone}`);
+      } catch (smsErr) {
+        console.error("SMS send failed (non-blocking):", smsErr);
+      }
+    }
+
     const finalCode = order!.payment_code ?? code;
     const rawPhone = args.customer_phone ? String(args.customer_phone) : "";
 
