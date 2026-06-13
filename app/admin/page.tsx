@@ -55,7 +55,10 @@ export default function AdminPage() {
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const [adminAnalytics, setAdminAnalytics] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "restaurants" | "revenue" | "analytics">("overview");
+  const [tab, setTab] = useState<"overview" | "restaurants" | "revenue" | "analytics" | "leads">("overview");
+  const [leads, setLeads] = useState<any[]>([]);
+  const [onboarding, setOnboarding] = useState<string | null>(null);
+  const [onboardMsg, setOnboardMsg] = useState<Record<string, string>>({});
   const [reportMonth, setReportMonth] = useState(() => new Date().getMonth() + 1);
   const [reportYear, setReportYear] = useState(() => new Date().getFullYear());
   const [sendingReportFor, setSendingReportFor] = useState<string | null>(null);
@@ -91,13 +94,15 @@ export default function AdminPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const [{ data: rests }, { data: orders }, analyticsRes] = await Promise.all([
+    const [{ data: rests }, { data: orders }, { data: leadsData }, analyticsRes] = await Promise.all([
       supabase.from("restaurants").select("*").order("created_at", { ascending: false }),
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
+      supabase.from("restaurant_leads").select("*").order("submitted_at", { ascending: false }),
       fetch("/api/analytics/admin"),
     ]);
     setRestaurants(rests || []);
     setAllOrders(orders || []);
+    setLeads(leadsData || []);
     if (analyticsRes.ok) {
       setAdminAnalytics(await analyticsRes.json());
     }
@@ -201,6 +206,22 @@ export default function AdminPage() {
               {t.icon} {t.label}
             </button>
           ))}
+          <button
+            onClick={() => setTab("leads")}
+            style={{
+              padding: "10px 22px", borderRadius: 10, border: "none",
+              cursor: "pointer", fontWeight: 700, fontSize: 13,
+              background: tab === "leads" ? "#FF6B35" : "transparent",
+              color: tab === "leads" ? "#fff" : "#6B7280",
+              fontFamily: "sans-serif",
+            }}
+          >
+            🍽️ Leads {leads.filter(l => l.status === "new").length > 0 && (
+              <span style={{ background: tab === "leads" ? "#fff" : "#FF6B35", color: tab === "leads" ? "#FF6B35" : "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginLeft: 4 }}>
+                {leads.filter(l => l.status === "new").length}
+              </span>
+            )}
+          </button>
         </div>
 
         {tab === "analytics" && adminAnalytics && (
@@ -427,6 +448,112 @@ export default function AdminPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {tab === "leads" && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ color: "#F9FAFB", fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Restaurant Applications</h2>
+              <p style={{ color: "#6B7280", fontSize: 13 }}>Review and onboard new restaurants. Approving auto-creates their Retell agent, phone number and sends login credentials.</p>
+            </div>
+
+            {leads.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "60px 0", color: "#4B5563" }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+                <div>No applications yet</div>
+              </div>
+            ) : (
+              leads.map(lead => (
+                <div key={lead.id} style={{
+                  ...S.card,
+                  padding: "24px",
+                  marginBottom: 16,
+                  borderColor: lead.status === "new" ? "rgba(255,107,53,0.3)" : "rgba(255,255,255,0.07)",
+                  background: lead.status === "new" ? "rgba(255,107,53,0.04)" : "rgba(255,255,255,0.02)",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                        <span style={{ color: "#F9FAFB", fontWeight: 800, fontSize: 18 }}>{lead.restaurant_name}</span>
+                        <span style={{
+                          padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                          background: lead.status === "new" ? "rgba(255,107,53,0.15)" : lead.status === "setup" ? "rgba(0,200,150,0.15)" : "rgba(255,255,255,0.08)",
+                          color: lead.status === "new" ? "#FF6B35" : lead.status === "setup" ? "#00C896" : "#9CA3AF",
+                        }}>
+                          {lead.status === "new" ? "NEW" : lead.status === "setup" ? "✅ LIVE" : lead.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <div style={{ color: "#9CA3AF", fontSize: 13, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span>👤 {lead.owner_name} · {lead.owner_email} · {lead.owner_phone}</span>
+                        <span>📍 {lead.address}</span>
+                        <span>🍽️ {lead.cuisine_type} · {lead.num_locations} location{lead.num_locations !== "1" ? "s" : ""}</span>
+                        {lead.heard_about && <span>💬 Heard via: {lead.heard_about}</span>}
+                        {lead.message && <span>📝 &quot;{lead.message}&quot;</span>}
+                        <span style={{ color: "#4B5563" }}>Submitted: {new Date(lead.submitted_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+
+                    {lead.status === "new" && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 160 }}>
+                        <button
+                          disabled={onboarding === lead.id}
+                          onClick={async () => {
+                            setOnboarding(lead.id);
+                            setOnboardMsg(prev => ({ ...prev, [lead.id]: "" }));
+                            try {
+                              const res = await fetch("/api/admin/onboard-restaurant", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  leadId: lead.id,
+                                  ownerEmail: lead.owner_email,
+                                  ownerName: lead.owner_name,
+                                  restaurantName: lead.restaurant_name,
+                                  phone: lead.restaurant_phone,
+                                  address: lead.address,
+                                }),
+                              });
+                              const data = await res.json();
+                              if (data.success) {
+                                setOnboardMsg(prev => ({ ...prev, [lead.id]: `✅ Live! Phone: ${data.phone}` }));
+                                setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: "setup" } : l));
+                              } else {
+                                setOnboardMsg(prev => ({ ...prev, [lead.id]: `❌ ${data.error}` }));
+                              }
+                            } catch {
+                              setOnboardMsg(prev => ({ ...prev, [lead.id]: "❌ Network error" }));
+                            }
+                            setOnboarding(null);
+                          }}
+                          style={{
+                            ...S.btn("#00C896"),
+                            opacity: onboarding === lead.id ? 0.7 : 1,
+                            fontSize: 13,
+                          }}
+                        >
+                          {onboarding === lead.id ? "Setting up..." : "✅ Approve & Onboard"}
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await supabase.from("restaurant_leads").update({ status: "rejected" }).eq("id", lead.id);
+                            setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: "rejected" } : l));
+                          }}
+                          style={{ ...S.btn("#EF4444", true), fontSize: 13 }}
+                        >
+                          ✗ Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {onboardMsg[lead.id] && (
+                    <div style={{ marginTop: 12, color: onboardMsg[lead.id].startsWith("✅") ? "#00C896" : "#EF4444", fontSize: 13, fontWeight: 600 }}>
+                      {onboardMsg[lead.id]}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         )}
       </main>
