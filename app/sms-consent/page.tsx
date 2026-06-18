@@ -83,22 +83,22 @@ export default function SmsConsentPage() {
               {
                 step: "2",
                 title: "AI Informs Customer of SMS",
-                desc: "During the call, the AI agent (Chloe) verbally informs the customer: \"You will receive an SMS with your 4-digit payment code to complete your order at payfood.us.\""
+                desc: "During the call, the AI agent verbally informs the customer: \"I'm sending a secure payment link to your phone to complete your order.\""
               },
               {
                 step: "3",
                 title: "Customer Confirms Phone Number",
-                desc: "The AI reads back the customer's phone number and asks: \"I have your number as XXX-XXX-XXXX. Is that correct?\" The customer must verbally confirm their phone number before the order is submitted."
+                desc: "The AI reads back the customer's phone number and asks: \"I have your number as XXX-XXX-XXXX, is that a cell phone that can receive texts?\" The customer must verbally confirm before the order is submitted."
               },
               {
                 step: "4",
                 title: "Verbal Consent Obtained",
-                desc: "By confirming their phone number and proceeding with the order, the customer provides express verbal consent to receive an SMS containing their payment code."
+                desc: "By confirming their cell phone number and proceeding with the order, the customer provides express verbal consent to receive an SMS containing their secure payment link."
               },
               {
                 step: "5",
                 title: "SMS Sent",
-                desc: "After order submission, one transactional SMS is sent containing the 4-digit payment code needed to complete payment at payfood.us."
+                desc: "After order submission, one transactional SMS is sent containing a secure payment link. The customer clicks the link and is taken directly to a secure Stripe checkout page to pay for their order."
               },
             ].map((item) => (
               <div key={item.step} style={{
@@ -136,10 +136,10 @@ export default function SmsConsentPage() {
           <div className="grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {[
               { label: "Program Name", value: "DigiVoceEats Order Notifications" },
-              { label: "Message Type", value: "Transactional — order payment codes only" },
+              { label: "Message Type", value: "Transactional — order payment links only" },
               { label: "Message Frequency", value: "One (1) message per order placed" },
-              { label: "Sender", value: "DigiVoceEats (Short code or 10DLC number)" },
-              { label: "Purpose", value: "Deliver 4-digit payment code for order completion" },
+              { label: "Sender", value: "DigiVoceEats (10DLC number)" },
+              { label: "Purpose", value: "Deliver secure payment link for order completion" },
               { label: "Cost", value: "Message and data rates may apply" },
             ].map((item) => (
               <div key={item.label} style={{
@@ -178,14 +178,14 @@ export default function SmsConsentPage() {
             </div>
 
             <div>
-              <div style={{ color: "#9a7a4a", fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", fontFamily: "Arial, sans-serif", marginBottom: 8 }}>Order Payment Code</div>
+              <div style={{ color: "#9a7a4a", fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", fontFamily: "Arial, sans-serif", marginBottom: 8 }}>Order Payment Link</div>
               <div style={{
                 background: "#fff8ee", border: "1px solid #f0d9a0",
                 borderRadius: 10, padding: "14px 18px",
                 color: "#7a5010", fontSize: 14, fontFamily: "Arial, sans-serif",
                 lineHeight: 1.6,
               }}>
-                DigiVoceEats: Your Bread & Kabob order code is 2847. Pay at payfood.us or show this code at the restaurant. Reply STOP to opt out.
+                DigiVoceEats: Your Bread & Kabob order is confirmed. Pay now: https://www.digivoceeats.com/pay/abc123 Reply STOP to opt out.
               </div>
             </div>
 
