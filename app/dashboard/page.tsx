@@ -16,7 +16,7 @@ const PLATFORM_FEE = 0.15;
 
 /** Restaurant sees paid orders, in-progress orders, and unpaid pay-at-restaurant orders (for payment code). */
 function isVisibleToRestaurant(order: { status?: string; payment_status?: string | null }) {
-  return order.payment_status === "paid" || order.payment_status === "cash_collected";
+  return true;
 }
 
 function isAwaitingPayment(order: { status?: string; payment_status?: string | null }) {
@@ -127,7 +127,7 @@ function OrderCard({
   const [smsSent, setSmsSent] = useState(false);
   const [smsError, setSmsError] = useState("");
   const badge = getOrderBadge(order);
-  const showPaymentCode = false;
+  const showPaymentCode = true;
   const showAcceptReject =
     (order.status === "pending" && order.payment_status === "paid") ||
     (order.status === "pending_payment" && order.payment_status === "unpaid");
