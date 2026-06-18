@@ -17,7 +17,7 @@ export default function PrivacyPolicy() {
             title: "3. SMS Messaging & Mobile Communications",
             content: `DigiVoceEats sends one-time transactional SMS messages containing payment links to customers who place food orders through our voice AI system.
 
-Opt-in: Customers opt in by checking a consent checkbox on our payment page before completing their order.
+Opt-in: Customers opt in by verbally providing their cell phone number during a live phone order call with our AI ordering assistant, and confirming it is a cell phone that can receive text messages, before their order is submitted.
 
 Message frequency: One (1) SMS message per order placed. No recurring messages.
 
