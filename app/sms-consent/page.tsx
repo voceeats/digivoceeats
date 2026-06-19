@@ -122,6 +122,38 @@ export default function SmsConsentPage() {
           </div>
         </div>
 
+        {/* Example Transcript */}
+        <div style={{
+          background: "#fff",
+          border: "1px solid #ede8e0",
+          borderRadius: 16, padding: "32px",
+          marginBottom: 24,
+        }}>
+          <h2 style={{ fontSize: 20, fontWeight: 400, marginBottom: 20, color: "#1a0a00", borderBottom: "2px solid #f0ede8", paddingBottom: 12 }}>
+            🎙️ Example Call Transcript Showing Opt-In
+          </h2>
+          <p style={{ color: "#6b4c2a", fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+            Below is an example excerpt from an actual order call demonstrating how verbal consent is collected before any SMS is sent:
+          </p>
+          <div style={{
+            background: "#faf7f2", border: "1px solid #ede8e0",
+            borderRadius: 12, padding: "24px",
+            fontFamily: "monospace", fontSize: 13.5, lineHeight: 2,
+            color: "#3d2a14",
+          }}>
+            <div><strong style={{ color: "#b5853a" }}>AI:</strong> &quot;Great! What&apos;s your name for the order?&quot;</div>
+            <div><strong style={{ color: "#2c6a40" }}>Customer:</strong> &quot;John Smith&quot;</div>
+            <div><strong style={{ color: "#b5853a" }}>AI:</strong> &quot;And what&apos;s your cell phone number so I can send you the payment link?&quot;</div>
+            <div><strong style={{ color: "#2c6a40" }}>Customer:</strong> &quot;703-555-1234&quot;</div>
+            <div><strong style={{ color: "#b5853a" }}>AI:</strong> &quot;I have your number as 703-555-1234 — is that a cell phone that can receive text messages?&quot;</div>
+            <div><strong style={{ color: "#2c6a40" }}>Customer:</strong> &quot;Yes&quot;</div>
+            <div><strong style={{ color: "#b5853a" }}>AI:</strong> &quot;Perfect! Your order is confirmed and a payment link will be sent to that number.&quot;</div>
+          </div>
+          <p style={{ color: "#9a7a4a", fontSize: 13, lineHeight: 1.6, marginTop: 16 }}>
+            By confirming their cell phone number can receive text messages and proceeding with the order, the customer provides express consent to receive one transactional SMS containing their payment link.
+          </p>
+        </div>
+
         {/* Message Program Details */}
         <div style={{
           background: "#fff",
