@@ -121,12 +121,8 @@ export async function sendDirectPaymentLink(params: {
   const directUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${params.orderId}`;
   const body = `DigiVoceEats: Your ${params.restaurantName} order is confirmed. Pay now: ${directUrl} Total: $${params.total.toFixed(2)}. Reply STOP to opt out.`;
 
-  try {
-    await snsSendSms({ to: phone, body });
-    console.log(`📱 SMS sent via SNS to ${phone}`);
-    return true;
-  } catch (err) {
-    console.error("SNS SMS failed:", err);
-    return false;
-  }
+  return tryTwilioThenSns(
+    () => twilioSendRawSms(phone, body),
+    () => snsSendSms({ to: phone, body }),
+  );
 }
