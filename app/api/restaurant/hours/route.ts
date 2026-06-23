@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const { data: restaurant } = await supabaseAdmin
       .from("restaurants")
       .select(
-        "name, opening_hours, prep_time_minutes, last_order_minutes_before_close, tax_rate",
+        "name, opening_hours, prep_time_minutes, last_order_minutes_before_close, tax_rate, is_open",
       )
       .eq("id", restaurantId)
       .single();
@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
 
     const status = computeRestaurantHoursStatus(restaurant.opening_hours, {
       lastOrderMinutesBeforeClose: lastOrderBuffer,
+      isOpen: restaurant.is_open !== false,
     });
 
     return NextResponse.json({

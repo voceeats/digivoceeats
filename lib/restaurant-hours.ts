@@ -176,11 +176,27 @@ export function formatDisplayTime(h: number, m: number): string {
 
 export function computeRestaurantHoursStatus(
   openingHours: OpeningHours | null | undefined,
-  options?: { lastOrderMinutesBeforeClose?: number },
+  options?: { lastOrderMinutesBeforeClose?: number; isOpen?: boolean },
 ) {
   const { now, dayName, currentMinutes, timeLabel } = getETNow();
   const lastOrderBuffer = options?.lastOrderMinutesBeforeClose ?? 45;
+  const manuallyClosed = options?.isOpen === false;
   const hours = openingHours?.[dayName];
+
+  if (manuallyClosed) {
+    return {
+      day: dayName,
+      current_time: timeLabel,
+      within_hours: false,
+      scheduled_open: false,
+      accepting_orders: false,
+      is_open: false,
+      next_transition_at: null,
+      next_transition_to: null,
+      reason: "Restaurant is currently closed (manually closed by owner)",
+      prep_time_minutes: 25,
+    };
+  }
 
   if (!hours || hours.is_closed) {
     const next = findNextTransition(openingHours, dayName, currentMinutes, false);
