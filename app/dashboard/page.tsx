@@ -1400,10 +1400,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [restaurant, setRestaurant] = useState<any>(null);
   const [isOpen, setIsOpen] = useState(true);
+  const [scheduledOpenDisplay, setScheduledOpenDisplay] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
-
-  /** Manual toggle override — respected until next open/close boundary */
-  const hoursOverrideRef = useRef<{ value: boolean; untilMs: number } | null>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const pendingRingRef = useRef(false);
@@ -1566,48 +1564,24 @@ export default function Dashboard() {
     initDashboard();
   }, []);
 
-  // Auto open/close based on opening hours — check every 10 minutes
+  // Display live scheduled status for UI banner only — does NOT auto-write to database.
+  // The is_open field is now purely manual (owner-controlled toggle) and persists until changed.
   useEffect(() => {
     if (!restaurant?.id) return;
-
     const restaurantId = restaurant.id;
-
-    const checkHours = async () => {
+    const checkScheduledStatus = async () => {
       try {
         const r = await fetch(`/api/restaurant/hours?restaurantId=${restaurantId}`);
         const data = await r.json();
-        if (typeof data.scheduled_open !== "boolean") return;
-
-        const now = Date.now();
-        const override = hoursOverrideRef.current;
-
-        if (override && now < override.untilMs) {
-          setIsOpen((prev) => (prev === override.value ? prev : override.value));
-          return;
+        if (typeof data.scheduled_open === "boolean") {
+          setScheduledOpenDisplay(data.scheduled_open);
         }
-
-        if (override && now >= override.untilMs) {
-          hoursOverrideRef.current = null;
-        }
-
-        const scheduledOpen = data.scheduled_open;
-        setIsOpen((prev) => {
-          if (prev !== scheduledOpen) {
-            void supabase
-              .from("restaurants")
-              .update({ is_open: scheduledOpen })
-              .eq("id", restaurantId);
-            console.log(`Auto ${scheduledOpen ? "opened" : "closed"} restaurant (hours)`);
-          }
-          return scheduledOpen;
-        });
       } catch (e) {
-        console.error("Hours check failed:", e);
+        console.error("Scheduled hours check failed:", e);
       }
     };
-
-    checkHours();
-    const interval = setInterval(checkHours, 600_000);
+    checkScheduledStatus();
+    const interval = setInterval(checkScheduledStatus, 600_000);
     return () => clearInterval(interval);
   }, [restaurant?.id]);
 
@@ -1698,11 +1672,13 @@ export default function Dashboard() {
       // For demo — use the Bread & Kabob restaurant
       const { data: demoRest } = await supabase.from("restaurants").select("*").eq("slug", "bread-kabob").single();
       setRestaurant(demoRest);
+      setIsOpen(demoRest?.is_open !== false);
       loadOrders(demoRest?.id);
       return;
     }
 
     setRestaurant(rest);
+    setIsOpen(rest.is_open !== false);
     loadOrders(rest.id);
   };
 
@@ -1731,19 +1707,6 @@ export default function Dashboard() {
     if (!restaurant) return;
 
     const newIsOpen = !isOpen;
-    let untilMs = Date.now() + 86_400_000;
-
-    try {
-      const r = await fetch(`/api/restaurant/hours?restaurantId=${restaurant.id}`);
-      const data = await r.json();
-      if (data.next_transition_at) {
-        untilMs = new Date(data.next_transition_at).getTime();
-      }
-    } catch (e) {
-      console.error("Hours lookup for override failed:", e);
-    }
-
-    hoursOverrideRef.current = { value: newIsOpen, untilMs };
     setIsOpen(newIsOpen);
     await supabase.from("restaurants").update({ is_open: newIsOpen }).eq("id", restaurant.id);
     try {
@@ -1926,15 +1889,25 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", background: "rgba(255,255,255,0.04)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)" }}>
-            <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>RESTAURANT</span>
-            <div
-              onClick={toggleRestaurant}
-              style={{ width: 44, height: 24, borderRadius: 12, cursor: "pointer", background: isOpen ? "#00C896" : "#374151", position: "relative", transition: "background 0.3s" }}
-            >
-              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: isOpen ? 23 : 3, transition: "left 0.3s" }} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", background: "rgba(255,255,255,0.04)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)" }}>
+              <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>RESTAURANT</span>
+              <div
+                onClick={toggleRestaurant}
+                style={{ width: 44, height: 24, borderRadius: 12, cursor: "pointer", background: isOpen ? "#00C896" : "#374151", position: "relative", transition: "background 0.3s" }}
+              >
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: isOpen ? 23 : 3, transition: "left 0.3s" }} />
+              </div>
+              <span style={{ fontSize: 12, color: isOpen ? "#00C896" : "#EF4444", fontWeight: 700 }}>{isOpen ? "OPEN" : "CLOSED"}</span>
             </div>
-            <span style={{ fontSize: 12, color: isOpen ? "#00C896" : "#EF4444", fontWeight: 700 }}>{isOpen ? "OPEN" : "CLOSED"}</span>
+            {scheduledOpenDisplay !== null && scheduledOpenDisplay !== isOpen && (
+              <div style={{
+                fontSize: 12, color: "#F59E0B", marginTop: 4,
+                display: "flex", alignItems: "center", gap: 4,
+              }}>
+                ⚠️ Scheduled hours say {scheduledOpenDisplay ? "OPEN" : "CLOSED"} right now — you're manually set to {isOpen ? "OPEN" : "CLOSED"}.
+              </div>
+            )}
           </div>
           <button
             onClick={handleSignOut}
