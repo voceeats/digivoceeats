@@ -215,12 +215,27 @@ export function computeRestaurantHoursStatus(
   }
 
   const openMinutes = parseTimeToMinutes(hours.open);
-  const closeMinutes = parseTimeToMinutes(hours.close);
+  let closeMinutes = parseTimeToMinutes(hours.close);
+
+  // Handle overnight hours (e.g. open 10:30 AM, close 3:00 AM next day)
+  const crossesMidnight = closeMinutes <= openMinutes;
+  if (crossesMidnight) {
+    closeMinutes += 24 * 60; // treat close time as next-day minutes
+  }
+
+  // If hours cross midnight, "current time" might also need a +24h adjustment
+  // when checking against the open/close window if current time is in the
+  // early-morning portion (e.g. 1:00 AM should count as "open" if close is 3:00 AM next day).
+  let effectiveCurrentMinutes = currentMinutes;
+  if (crossesMidnight && currentMinutes < openMinutes) {
+    effectiveCurrentMinutes += 24 * 60;
+  }
+
   const lastOrderMinutes = Math.max(openMinutes, closeMinutes - lastOrderBuffer);
 
-  const within_hours = currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+  const within_hours = effectiveCurrentMinutes >= openMinutes && effectiveCurrentMinutes < closeMinutes;
   const accepting_orders =
-    currentMinutes >= openMinutes && currentMinutes < lastOrderMinutes;
+    effectiveCurrentMinutes >= openMinutes && effectiveCurrentMinutes < lastOrderMinutes;
 
   const [openHour, openMin] = hours.open.split(":").map(Number);
   const [closeHour, closeMin] = hours.close.split(":").map(Number);
@@ -237,7 +252,7 @@ export function computeRestaurantHoursStatus(
   let reason: string | null = null;
   if (!accepting_orders) {
     reason =
-      currentMinutes < openMinutes
+      effectiveCurrentMinutes < openMinutes
         ? `We open at ${openTime}`
         : `Sorry, we stopped taking orders at ${lastOrderTime}. We close at ${closeTime}.`;
   }
